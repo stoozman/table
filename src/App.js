@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import DataTable from './components/DataTable';
 import DocumentGenerator from './components/DocumentGenerator';
 
-const supabaseUrl = 'https://diiogcgzqpvikbkeqmov.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRpaW9nY2d6cXB2aWtia2VxbW92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIyOTA3NTIsImV4cCI6MjA1Nzg2Njc1Mn0.CZ2OtYnOK8F90GBoCHZCh9HVbywABtC9kFc2JS1CXfE';
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
+const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 function App() {
