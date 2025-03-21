@@ -1,0 +1,87 @@
+/* Контейнер для всей таблицы */
+.table-container {
+    margin: 20px 0;
+}
+
+/* Таблица – горизонтальное скроллирование */
+.table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto; /* Изменено с fixed на auto */
+}
+
+th, td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+    box-sizing: border-box;
+    word-wrap: break-word;
+    /* Фиксированная ширина удалена */
+}
+
+th {
+    background-color: #f2f2f2;
+    border-bottom: 2px solid #ddd;
+    white-space: nowrap; /* Запрещаем перенос текста */
+    word-break: normal;
+}
+
+tr:hover {
+    background-color: #f5f5f5;
+}
+
+/* Отдельный контейнер для формы ввода, обеспечивающий горизонтальное скроллирование */
+.input-scroll {
+    width: 100%;
+    overflow-x: auto;
+    margin-top: 20px;
+}
+
+/* Стили для самой формы ввода */
+.input-scroll form {
+    display: flex;
+    min-width: 1500px; /* Подберите значение, чтобы все поля поместились */
+    gap: 12px;
+    padding: 12px;
+}
+
+.input-scroll form input,
+.input-scroll form select,
+.input-scroll form textarea {
+    flex: 1;
+    padding: 8px;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+/* Если нужна общая структура для полей ввода, можно использовать дополнительные обёртки для каждого поля */
+.input-field {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.disabled-button {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  button {
+    padding: 6px 12px;
+    background-color: #4285f4;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin: 2px;
+  }
+  
+  button:hover:not(.disabled-button) {
+    background-color: #3367d6;
+  }
