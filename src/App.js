@@ -33,10 +33,10 @@ function App() {
             appearance: newData.appearance,
             supplier: newData.supplier,
             manufacturer: newData.manufacturer,
-            receipt_date: newData.receipt_date,
+            receipt_date: newData.receipt_date || null, // Обработка пустого значения
             batch_number: newData.batch_number,
-            manufacture_date: newData.manufacture_date,
-            expiration_date: newData.expiration_date,
+            manufacture_date: newData.manufacture_date || null, // Обработка пустого значения
+            expiration_date: newData.expiration_date || null, // Обработка пустого значения
             appearance_match: newData.appearance_match,
             actual_mass: newData.actual_mass,
             inspected_metrics: newData.inspected_metrics,
@@ -47,17 +47,43 @@ function App() {
             label: newData.label,
             comment: newData.comment
         };
-
+    
         console.log('Adding data:', dataToInsert); // Отладочный вывод
-
-        const { data, error } = await supabase
+    
+        const { data: insertedData, error } = await supabase
             .from(table)
             .insert([dataToInsert]);
-
+    
         if (error) console.error('Error adding data:', error);
         else {
             console.log('Successfully added data');
             fetchData(); // Обновить данные после добавления
+        }
+    };
+
+    const editData = async (updatedData) => {
+        const { data, error } = await supabase
+            .from(table)
+            .update(updatedData)
+            .eq('id', updatedData.id);
+
+        if (error) console.error('Error updating data:', error);
+        else {
+            console.log('Successfully updated data');
+            fetchData(); // Обновить данные после редактирования
+        }
+    };
+
+    const deleteData = async (id) => {
+        const { data, error } = await supabase
+            .from(table)
+            .delete()
+            .eq('id', id);
+
+        if (error) console.error('Error deleting data:', error);
+        else {
+            console.log('Successfully deleted data');
+            fetchData(); // Обновить данные после удаления
         }
     };
 
@@ -141,7 +167,7 @@ function App() {
                 </label>
             </div>
 
-            <DataTable data={data} table={table} onAdd={addData} supabase={supabase} />
+            <DataTable data={data} table={table} onAdd={addData} onEdit={editData} onDelete={deleteData} />
         </div>
     );
 }

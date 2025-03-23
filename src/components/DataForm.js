@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-function DataForm({ onAdd }) {
+function DataForm({ onAdd, onEdit, editingItem }) {
     const [formData, setFormData] = useState({
         name: '',
         appearance: '',
@@ -19,6 +19,29 @@ function DataForm({ onAdd }) {
         comment: ''
     });
 
+    // Инициализация формой данных для редактирования
+    useEffect(() => {
+        if (editingItem) {
+            setFormData({
+                name: editingItem.name || '',
+                appearance: editingItem.appearance || '',
+                supplier: editingItem.supplier || '',
+                manufacturer: editingItem.manufacturer || '',
+                receipt_date: editingItem.receipt_date || '',
+                batch_number: editingItem.batch_number || '',
+                manufacture_date: editingItem.manufacture_date || '',
+                expiration_date: editingItem.expiration_date || '',
+                appearance_match: editingItem.appearance_match || '',
+                actual_mass: editingItem.actual_mass || '',
+                inspected_metrics: editingItem.inspected_metrics || '',
+                investigation_result: editingItem.investigation_result || '',
+                passport_standard: editingItem.passport_standard || '',
+                full_name: editingItem.full_name || '',
+                comment: editingItem.comment || ''
+            });
+        }
+    }, [editingItem]);
+
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData({
@@ -29,7 +52,13 @@ function DataForm({ onAdd }) {
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        onAdd(formData);
+        if (editingItem) {
+            // Если редактируем, вызываем onEdit
+            onEdit({ ...formData, id: editingItem.id });
+        } else {
+            // Иначе добавляем новые данные
+            onAdd(formData);
+        }
         setFormData({
             name: '',
             appearance: '',
@@ -93,7 +122,6 @@ function DataForm({ onAdd }) {
                     name="name"
                     value={formData.name}
                     onChange={handleChange}
-                    required
                     style={inputStyle}
                 />
             </div>
@@ -105,7 +133,6 @@ function DataForm({ onAdd }) {
                     name="appearance"
                     value={formData.appearance}
                     onChange={handleChange}
-                    required
                     style={inputStyle}
                 />
             </div>
@@ -117,7 +144,6 @@ function DataForm({ onAdd }) {
                     name="supplier"
                     value={formData.supplier}
                     onChange={handleChange}
-                    required
                     style={inputStyle}
                 />
             </div>
@@ -129,7 +155,6 @@ function DataForm({ onAdd }) {
                     name="manufacturer"
                     value={formData.manufacturer}
                     onChange={handleChange}
-                    required
                     style={inputStyle}
                 />
             </div>
@@ -141,7 +166,6 @@ function DataForm({ onAdd }) {
                     name="receipt_date"
                     value={formData.receipt_date}
                     onChange={handleChange}
-                    required
                     style={inputStyle}
                 />
             </div>
@@ -153,7 +177,6 @@ function DataForm({ onAdd }) {
                     name="batch_number"
                     value={formData.batch_number}
                     onChange={handleChange}
-                    required
                     style={inputStyle}
                 />
             </div>
@@ -165,7 +188,6 @@ function DataForm({ onAdd }) {
                     name="manufacture_date"
                     value={formData.manufacture_date}
                     onChange={handleChange}
-                    required
                     style={inputStyle}
                 />
             </div>
@@ -177,7 +199,6 @@ function DataForm({ onAdd }) {
                     name="expiration_date"
                     value={formData.expiration_date}
                     onChange={handleChange}
-                    required
                     style={inputStyle}
                 />
             </div>
@@ -188,7 +209,6 @@ function DataForm({ onAdd }) {
                     name="appearance_match"
                     value={formData.appearance_match}
                     onChange={handleChange}
-                    required
                     style={inputStyle}
                 >
                     <option value="">Выберите</option>
@@ -204,7 +224,6 @@ function DataForm({ onAdd }) {
                     name="actual_mass"
                     value={formData.actual_mass}
                     onChange={handleChange}
-                    required
                     style={inputStyle}
                 />
             </div>
@@ -216,7 +235,6 @@ function DataForm({ onAdd }) {
                     name="inspected_metrics"
                     value={formData.inspected_metrics}
                     onChange={handleChange}
-                    required
                     style={inputStyle}
                 />
             </div>
@@ -228,7 +246,6 @@ function DataForm({ onAdd }) {
                     name="investigation_result"
                     value={formData.investigation_result}
                     onChange={handleChange}
-                    required
                     style={inputStyle}
                 />
             </div>
@@ -240,7 +257,6 @@ function DataForm({ onAdd }) {
                     name="passport_standard"
                     value={formData.passport_standard}
                     onChange={handleChange}
-                    required
                     style={inputStyle}
                 />
             </div>
@@ -252,7 +268,6 @@ function DataForm({ onAdd }) {
                     name="full_name"
                     value={formData.full_name}
                     onChange={handleChange}
-                    required
                     style={inputStyle}
                 />
             </div>
@@ -264,12 +279,13 @@ function DataForm({ onAdd }) {
                     name="comment"
                     value={formData.comment}
                     onChange={handleChange}
-                    required
                     style={inputStyle}
                 />
             </div>
 
-            <button type="submit" style={buttonStyle}>Добавить</button>
+            <button type="submit" style={buttonStyle}>
+                {editingItem ? 'Обновить' : 'Добавить'}
+            </button>
         </form>
     );
 }

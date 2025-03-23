@@ -39,192 +39,34 @@ export async function generateDocument(data) {
                         },
                     }),
 
-                    // Таблица с информацией
-                    new Table({
-                        width: {
-                            size: 100,
-                            type: WidthType.PERCENTAGE,
-                        },
-                        layout: TableLayoutType.FIXED,
-                        borders: {
-                            top: { style: BorderStyle.SINGLE, size: 1, color: "#000000" },
-                            bottom: { style: BorderStyle.SINGLE, size: 1, color: "#000000" },
-                            left: { style: BorderStyle.SINGLE, size: 1, color: "#000000" },
-                            right: { style: BorderStyle.SINGLE, size: 1, color: "#000000" },
-                            insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: "#000000" },
-                            insideVertical: { style: BorderStyle.SINGLE, size: 1, color: "#000000" },
-                        },
-                        // УДАЛЕН блок tableShading, который задавал белую заливку
-                        rows: [
-                            new TableRow({
-                                children: [
-                                    new TableCell({
-                                        width: {
-                                            size: 30,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: "Наименование:",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                    new TableCell({
-                                        width: {
-                                            size: 70,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: data.name || "",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                ],
-                            }),
-                            new TableRow({
-                                children: [
-                                    new TableCell({
-                                        width: {
-                                            size: 30,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: "Поставщик:",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                    new TableCell({
-                                        width: {
-                                            size: 70,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: data.supplier || "",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                ],
-                            }),
-                            new TableRow({
-                                children: [
-                                    new TableCell({
-                                        width: {
-                                            size: 30,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: "Производитель:",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                    new TableCell({
-                                        width: {
-                                            size: 70,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: data.manufacturer || "",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                ],
-                            }),
-                            new TableRow({
-                                children: [
-                                    new TableCell({
-                                        width: {
-                                            size: 30,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: "Дата поступления:",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                    new TableCell({
-                                        width: {
-                                            size: 70,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: data.receipt_date ? new Date(data.receipt_date).toLocaleDateString() : "",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                ],
-                            }),
-                            new TableRow({
-                                children: [
-                                    new TableCell({
-                                        width: {
-                                            size: 30,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: "Дата проверки:",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                    new TableCell({
-                                        width: {
-                                            size: 70,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: data.check_date ? new Date(data.check_date).toLocaleDateString() : "",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                ],
-                            }),
-                            new TableRow({
-                                children: [
-                                    new TableCell({
-                                        width: {
-                                            size: 30,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: "№ партии:",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                    new TableCell({
-                                        width: {
-                                            size: 70,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: data.batch_number || "",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                ],
-                            }),
-                            new TableRow({
-                                children: [
-                                    new TableCell({
-                                        width: {
-                                            size: 30,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: "Дата изготовления:",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                    new TableCell({
-                                        width: {
-                                            size: 70,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: data.manufacture_date ? new Date(data.manufacture_date).toLocaleDateString() : "",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                ],
-                            }),
-                        ],
+                    // Данные в виде текста вместо первой таблицы
+                    new Paragraph({
+                        text: `Наименование: ${data.name || ""}`,
+                        spacing: { after: 100 },
+                    }),
+                    new Paragraph({
+                        text: `Поставщик: ${data.supplier || ""}`,
+                        spacing: { after: 100 },
+                    }),
+                    new Paragraph({
+                        text: `Производитель: ${data.manufacturer || ""}`,
+                        spacing: { after: 100 },
+                    }),
+                    new Paragraph({
+                        text: `Дата поступления: ${data.receipt_date ? new Date(data.receipt_date).toLocaleDateString() : ""}`,
+                        spacing: { after: 100 },
+                    }),
+                    new Paragraph({
+                        text: `Дата проверки: ${data.check_date ? new Date(data.check_date).toLocaleDateString() : ""}`,
+                        spacing: { after: 100 },
+                    }),
+                    new Paragraph({
+                        text: `№ партии: ${data.batch_number || ""}`,
+                        spacing: { after: 100 },
+                    }),
+                    new Paragraph({
+                        text: `Дата изготовления: ${data.manufacture_date ? new Date(data.manufacture_date).toLocaleDateString() : ""}`,
+                        spacing: { after: 100 },
                     }),
 
                     // Результаты проверки
@@ -237,7 +79,7 @@ export async function generateDocument(data) {
                         },
                     }),
 
-                    // Таблица результатов
+                    // Вторая таблица результатов остается без изменений
                     new Table({
                         width: {
                             size: 100,
@@ -335,7 +177,7 @@ export async function generateDocument(data) {
                                             type: WidthType.PERCENTAGE,
                                         },
                                         children: [new Paragraph({
-                                            text: "",
+                                            text: data.appearance || "", // Используем значение из data.appearance
                                             spacing: { before: 50, after: 50 },
                                         })],
                                     }),
@@ -462,15 +304,15 @@ export async function getDropboxShareableLink(filePath, accessToken) {
             console.log('Shared link created:', response.data.url);
             return response.data.url;
         }
-        
+
         return null;
     } catch (error) {
         // Проверка на случай, если ссылка уже существует
-        if (error.response && 
-            error.response.data && 
-            error.response.data.error && 
+        if (error.response &&
+            error.response.data &&
+            error.response.data.error &&
             error.response.data.error['.tag'] === 'shared_link_already_exists') {
-            
+
             try {
                 // Получаем существующие ссылки
                 const existingLinksResponse = await axios({
@@ -484,9 +326,9 @@ export async function getDropboxShareableLink(filePath, accessToken) {
                         path: filePath
                     }
                 });
-                
-                if (existingLinksResponse.data && 
-                    existingLinksResponse.data.links && 
+
+                if (existingLinksResponse.data &&
+                    existingLinksResponse.data.links &&
                     existingLinksResponse.data.links.length > 0) {
                     console.log('Found existing shared link:', existingLinksResponse.data.links[0].url);
                     return existingLinksResponse.data.links[0].url;
@@ -495,7 +337,7 @@ export async function getDropboxShareableLink(filePath, accessToken) {
                 console.error('Ошибка при получении существующих ссылок:', listError);
             }
         }
-        
+
         console.error('Ошибка при создании общедоступной ссылки:', error.response ? error.response.data : error.message);
         return null;
     }
