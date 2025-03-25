@@ -2,327 +2,482 @@ import React, { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import update from 'immutability-helper';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+const repeatOptions = [
+  { value: 'none', label: 'Без повтора' },
+  { value: 'daily', label: 'Ежедневно' },
+  { value: 'weekly', label: 'Еженедельно' },
+  { value: 'monthly', label: 'Ежемесячно' },
+  { value: 'quarterly', label: 'Ежеквартально' },
+  { value: 'yearly', label: 'Ежегодно' },
+  { value: 'specific_date', label: 'На конкретную дату' }
+];
+
 function TasksPage() {
-    const [tasks, setTasks] = useState([]);
-    const [archiveTasks, setArchiveTasks] = useState([]);
-    const [showArchive, setShowArchive] = useState(false);
-    const [editingTask, setEditingTask] = useState(null);
-    const [newTask, setNewTask] = useState({ 
-        product_name: '', 
-        comment: '', 
-        completed: false, 
-        is_important: false 
+  const [tasks, setTasks] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [newTask, setNewTask] = useState({
+    product_name: '',
+    comment: '',
+    completed: false,
+    is_important: false,
+    repeat_type: 'none',
+    repeat_config: {},
+    next_due_date: null
+  });
+  const [showCompleted, setShowCompleted] = useState(true);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const initializeData = async () => {
+      await transferUnfinishedTasks();
+      await fetchTasks(selectedDate);
+    };
+    initializeData();
+  }, [selectedDate]);
+
+  const getYesterdayDate = (date) => {
+    const yesterday = new Date(date);
+    yesterday.setDate(yesterday.getDate() - 1);
+    return yesterday.toISOString().split('T')[0];
+  };
+
+  const transferUnfinishedTasks = async () => {
+    try {
+      const yesterday = getYesterdayDate(selectedDate);
+      
+      const { data: unfinishedTasks, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .lte('next_due_date', yesterday)
+        .eq('completed', false);
+
+      if (error) throw error;
+
+      if (unfinishedTasks?.length > 0) {
+        await supabase.from('task_archive').insert(unfinishedTasks);
+        
+        const updates = unfinishedTasks.map(task => {
+          if (task.repeat_type !== 'none') {
+            const nextDue = getNextDueDate(task);
+            return supabase
+              .from('tasks')
+              .update({ next_due_date: nextDue })
+              .eq('id', task.id);
+          }
+          return supabase.from('tasks').delete().eq('id', task.id);
+        });
+
+        await Promise.all(updates);
+      }
+    } catch (error) {
+      console.error('Ошибка архивации:', error);
+    }
+  };
+
+  const fetchTasks = async (date) => {
+    try {
+      const formattedDate = date.toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('date', formattedDate)
+        .order('priority');
+
+      if (error) throw error;
+      setTasks(data || []);
+    } catch (error) {
+      console.error('Ошибка загрузки задач:', error);
+    }
+  };
+
+  const getNextDueDate = (task) => {
+    const currentDate = new Date(task.next_due_date);
+    switch(task.repeat_type) {
+      case 'daily': return new Date(currentDate.setDate(currentDate.getDate() + 1));
+      case 'weekly': return new Date(currentDate.setDate(currentDate.getDate() + 7));
+      case 'monthly': return new Date(currentDate.setMonth(currentDate.getMonth() + 1));
+      case 'quarterly': return new Date(currentDate.setMonth(currentDate.getMonth() + 3));
+      case 'yearly': return new Date(currentDate.setFullYear(currentDate.getFullYear() + 1));
+      case 'specific_date': return new Date(task.repeat_config.date);
+      default: return null;
+    }
+  };
+
+  const handleCompleteTask = async (task) => {
+    try {
+      const { error: updateError } = await supabase
+        .from('tasks')
+        .update({ completed: !task.completed })
+        .eq('id', task.id);
+
+      if (updateError) throw updateError;
+
+      if (task.repeat_type !== 'none' && !task.completed) {
+        const nextDueDate = getNextDueDate(task);
+        await supabase.from('tasks').insert([{ 
+          ...task,
+          id: undefined,
+          completed: false,
+          next_due_date: nextDueDate.toISOString().split('T')[0]
+        }]);
+      }
+
+      await fetchTasks(selectedDate);
+    } catch (error) {
+      console.error('Ошибка выполнения задачи:', error);
+    }
+  };
+
+  const updateTaskComment = async (taskId, newComment) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ comment: newComment })
+        .eq('id', taskId);
+
+      if (error) throw error;
+      await fetchTasks(selectedDate);
+    } catch (error) {
+      console.error('Ошибка обновления комментария:', error);
+    }
+  };
+
+  const addTask = async () => {
+    try {
+      if (!newTask.product_name.trim()) {
+        alert('Введите название задачи');
+        return;
+      }
+
+      const taskToAdd = {
+        ...newTask,
+        date: selectedDate.toISOString().split('T')[0],
+        next_due_date: newTask.next_due_date
+          ? new Date(newTask.next_due_date).toISOString().split('T')[0]
+          : selectedDate.toISOString().split('T')[0],
+        priority: tasks.length + 1
+      };
+
+      const { error } = await supabase
+        .from('tasks')
+        .insert([taskToAdd]);
+
+      if (error) throw error;
+
+      setNewTask({
+        product_name: '',
+        comment: '',
+        completed: false,
+        is_important: false,
+        repeat_type: 'none',
+        repeat_config: {},
+        next_due_date: null
+      });
+
+      await fetchTasks(selectedDate);
+    } catch (error) {
+      console.error('Ошибка добавления задачи:', error);
+      alert(`Ошибка: ${error.message}`);
+    }
+  };
+
+  const moveCardHandler = (dragIndex, hoverIndex) => {
+    const draggedTask = tasks[dragIndex];
+    const updatedTasks = update(tasks, {
+      $splice: [[dragIndex, 1], [hoverIndex, 0, draggedTask]]
     });
+    setTasks(updatedTasks);
+    updateTaskOrder(updatedTasks);
+  };
 
-    useEffect(() => {
-        transferUnfinishedTasks();
-        fetchTasks();
-    }, []);
+  const updateTaskOrder = async (updatedTasks) => {
+    try {
+      const updates = updatedTasks.map((task, index) => 
+        supabase
+          .from('tasks')
+          .update({ priority: index + 1 })
+          .eq('id', task.id)
+      );
+      
+      await Promise.all(updates);
+      await fetchTasks(selectedDate);
+    } catch (error) {
+      console.error('Ошибка обновления порядка:', error);
+    }
+  };
 
-    const transferUnfinishedTasks = async () => {
-        const today = new Date().toISOString().split('T')[0];
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-
-        let { data: unfinishedTasks, error } = await supabase
-            .from('tasks')
-            .select('*')
-            .eq('date', yesterday)
-            .eq('completed', false);
-
-        if (unfinishedTasks && unfinishedTasks.length > 0) {
-            await supabase.from('task_archive').insert(
-                unfinishedTasks.map(task => ({
-                    ...task,
-                    original_date: task.date
-                }))
-            );
-
-            await supabase
-                .from('tasks')
-                .delete()
-                .eq('date', yesterday)
-                .eq('completed', false);
-        }
-    };
-
-    const fetchTasks = async () => {
-        const today = new Date().toISOString().split('T')[0];
-        let { data, error } = await supabase
-            .from('tasks')
-            .select('*')
-            .eq('date', today)
-            .order('priority');
-
-        if (error) console.error('Error fetching tasks:', error);
-        else setTasks(data || []);
-    };
-
-    const fetchArchiveTasks = async () => {
-        let { data, error } = await supabase
-            .from('task_archive')
-            .select('*')
-            .order('original_date', { ascending: false });
-
-        if (error) console.error('Error fetching archive tasks:', error);
-        else setArchiveTasks(data || []);
-    };
-
-    const addTask = async () => {
-        const today = new Date().toISOString().split('T')[0];
-        const { data, error } = await supabase
-            .from('tasks')
-            .insert([{ 
-                ...newTask, 
-                date: today,
-                priority: tasks.length + 1 
-            }]);
-
-        if (error) {
-            console.error('Error adding task:', error);
-            alert(`Ошибка добавления задачи: ${error.message}`);
-        } else {
-            setNewTask({ 
-                product_name: '', 
-                comment: '', 
-                completed: false, 
-                is_important: false 
-            });
-            fetchTasks();
-        }
-    };
-
-    const updateTaskOrder = async (updatedTasks) => {
-        const updatePromises = updatedTasks.map((task, index) => 
-            supabase
-                .from('tasks')
-                .update({ priority: index + 1 })
-                .eq('id', task.id)
-        );
-
-        await Promise.all(updatePromises);
-        fetchTasks();
-    };
-
-    const handleCompleteToggle = async (task) => {
-        const { error } = await supabase
-            .from('tasks')
-            .update({ completed: !task.completed })
-            .eq('id', task.id);
-
-        if (error) {
-            console.error('Error updating task:', error);
-        } else {
-            fetchTasks();
-        }
-    };
-
-    const handleImportanceToggle = async (task) => {
-        const { error } = await supabase
-            .from('tasks')
-            .update({ is_important: !task.is_important })
-            .eq('id', task.id);
-
-        if (error) {
-            console.error('Error updating task importance:', error);
-        } else {
-            fetchTasks();
-        }
-    };
-
-    const updateTaskComment = async (task, newComment) => {
-        const { error } = await supabase
-            .from('tasks')
-            .update({ comment: newComment })
-            .eq('id', task.id);
-
-        if (error) {
-            console.error('Error updating comment:', error);
-        } else {
-            setEditingTask(null);
-            fetchTasks();
-        }
-    };
-
-    const moveCardHandler = (dragIndex, hoverIndex) => {
-        const draggedTask = tasks[dragIndex];
-        const updatedTasks = update(tasks, {
-            $splice: [[dragIndex, 1], [hoverIndex, 0, draggedTask]]
-        });
-        setTasks(updatedTasks);
-        updateTaskOrder(updatedTasks);
-    };
-
-    const Card = ({ task, index }) => {
-        const [{ isDragging }, drag] = useDrag({
-            type: 'CARD',
-            item: { index },
-            collect: (monitor) => ({
-                isDragging: monitor.isDragging(),
-            }),
-        });
-
-        const [, drop] = useDrop({
-            accept: 'CARD',
-            hover: (draggedItem) => {
-                if (draggedItem.index !== index) {
-                    moveCardHandler(draggedItem.index, index);
-                    draggedItem.index = index;
-                }
-            },
-        });
-
-        const [localComment, setLocalComment] = useState(task.comment);
-
-        return (
-            <div
-                ref={(node) => drag(drop(node))}
-                style={{
-                    padding: '10px',
-                    margin: '5px 0',
-                    border: `2px solid ${task.is_important ? 'red' : '#ccc'}`,
-                    background: isDragging ? 'lightgray' : '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    textDecoration: task.completed ? 'line-through' : 'none'
-                }}
-            >
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <input 
-                        type="checkbox" 
-                        checked={task.completed} 
-                        onChange={() => handleCompleteToggle(task)}
-                        style={{ marginRight: '10px' }}
-                    />
-                    <input 
-                        type="checkbox" 
-                        checked={task.is_important} 
-                        onChange={() => handleImportanceToggle(task)}
-                        style={{ marginRight: '10px' }}
-                    />
-                    <div>
-                        <strong>{task.product_name}</strong>
-                        {editingTask === task.id ? (
-                            <div>
-                                <textarea
-                                    value={localComment}
-                                    onChange={(e) => setLocalComment(e.target.value)}
-                                    onBlur={() => updateTaskComment(task, localComment)}
-                                    style={{ width: '100%' }}
-                                />
-                                <button onClick={() => updateTaskComment(task, localComment)}>
-                                    Сохранить
-                                </button>
-                            </div>
-                        ) : (
-                            <p 
-                                onClick={() => setEditingTask(task.id)}
-                                style={{ cursor: 'pointer' }}
-                            >
-                                {task.comment || 'Добавить комментарий'}
-                            </p>
-                        )}
-                    </div>
-                </div>
+  return (
+    <DndProvider backend={HTML5Backend}>
+      <div className="task-container">
+        <div className="task-header">
+          <h1 className="task-title">Планировщик задач</h1>
+          <div className="time-section">
+            <div className="current-time">
+              {currentTime.toLocaleTimeString('ru-RU')}
             </div>
-        );
-    };
+            <DatePicker
+              selected={selectedDate}
+              onChange={setSelectedDate}
+              dateFormat="dd.MM.yyyy"
+              className="date-picker"
+              locale="ru"
+            />
+          </div>
+        </div>
 
-    const toggleArchiveView = () => {
-        setShowArchive(!showArchive);
-        if (!showArchive) {
-            fetchArchiveTasks();
-        }
-    };
+        <div className="filter-controls">
+          <label className="filter-label">
+            <input
+              type="checkbox"
+              checked={showCompleted}
+              onChange={(e) => setShowCompleted(e.target.checked)}
+            />
+            Показывать выполненные
+          </label>
+        </div>
 
-    return (
-        <DndProvider backend={HTML5Backend}>
-            <div style={{ maxWidth: '500px', margin: '0 auto', padding: '20px' }}>
-                <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center' 
-                }}>
-                    <h1>{showArchive ? 'Архив задач' : 'Задачи на сегодня'}</h1>
-                    <button onClick={toggleArchiveView}>
-                        {showArchive ? 'Текущие задачи' : 'Показать архив'}
-                    </button>
-                </div>
+        <div className="tasks-list">
+          {tasks
+            .filter(task => showCompleted || !task.completed)
+            .map((task, index) => (
+              <TaskItem 
+                key={task.id} 
+                task={task} 
+                onComplete={handleCompleteTask}
+                onUpdateComment={updateTaskComment}
+                moveCard={moveCardHandler}
+                index={index}
+              />
+            ))}
+        </div>
 
-                {!showArchive ? (
-                    <>
-                        {tasks.map((task, index) => (
-                            <Card key={task.id} task={task} index={index} />
-                        ))}
-                        <div style={{ marginTop: '20px' }}>
-                            <input
-                                type="text"
-                                placeholder="Название продукта"
-                                value={newTask.product_name}
-                                onChange={(e) => setNewTask({ ...newTask, product_name: e.target.value })}
-                                style={{ width: '100%', marginBottom: '10px', padding: '5px' }}
-                            />
-                            <textarea
-                                placeholder="Комментарий"
-                                value={newTask.comment}
-                                onChange={(e) => setNewTask({ ...newTask, comment: e.target.value })}
-                                style={{ width: '100%', marginBottom: '10px', padding: '5px' }}
-                            />
-                            <div style={{ marginBottom: '10px' }}>
-                                <label>
-                                    <input 
-                                        type="checkbox" 
-                                        checked={newTask.is_important}
-                                        onChange={() => setNewTask({ 
-                                            ...newTask, 
-                                            is_important: !newTask.is_important 
-                                        })}
-                                    />
-                                    Важная задача
-                                </label>
-                            </div>
-                            <button 
-                                onClick={addTask}
-                                style={{ 
-                                    width: '100%', 
-                                    padding: '10px', 
-                                    backgroundColor: '#4CAF50', 
-                                    color: 'white', 
-                                    border: 'none' 
-                                }}
-                            >
-                                Добавить задачу
-                            </button>
-                        </div>
-                    </>
-                ) : (
-                    <div>
-                        {archiveTasks.map((task) => (
-                            <div 
-                                key={task.id} 
-                                style={{ 
-                                    padding: '10px', 
-                                    margin: '5px 0',
-                                    border: `2px solid ${task.is_important ? 'red' : '#ccc'}`,
-                                    textDecoration: task.completed ? 'line-through' : 'none'
-                                }}
-                            >
-                                <strong>{task.product_name}</strong>
-                                <p>Дата: {task.original_date}</p>
-                                {task.comment && <p>Комментарий: {task.comment}</p>}
-                                <p>Статус: {task.completed ? 'Выполнена' : 'Не выполнена'}</p>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-        </DndProvider>
-    );
+        <AddTaskForm 
+          newTask={newTask}
+          setNewTask={setNewTask}
+          addTask={addTask}
+        />
+      </div>
+    </DndProvider>
+  );
 }
+
+const TaskItem = ({ task, onComplete, onUpdateComment, moveCard, index }) => {
+  const [{ isDragging }, drag] = useDrag({
+    type: 'CARD',
+    item: { index },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  });
+
+  const [, drop] = useDrop({
+    accept: 'CARD',
+    hover: (draggedItem) => {
+      if (draggedItem.index !== index) {
+        moveCard(draggedItem.index, index);
+        draggedItem.index = index;
+      }
+    },
+  });
+
+  const [editingComment, setEditingComment] = useState(false);
+  const [localComment, setLocalComment] = useState(task.comment);
+  const dueDate = new Date(task.next_due_date);
+  const isOverdue = dueDate < new Date() && !task.completed;
+  const isUrgent = isOverdue && task.is_important;
+
+  const handleCommentSave = async () => {
+    await onUpdateComment(task.id, localComment);
+    setEditingComment(false);
+  };
+
+  return (
+    <div 
+      ref={(node) => drag(drop(node))}
+      className={`task-item ${isUrgent ? 'urgent' : ''} ${task.completed ? 'completed' : ''}`}
+      style={{ opacity: isDragging ? 0.5 : 1 }}
+    >
+      <div className="task-content">
+        <div className="task-status">
+          <input
+            type="checkbox"
+            checked={task.completed}
+            onChange={() => onComplete(task)}
+            className="complete-checkbox"
+          />
+          <div className="task-info">
+            <h3 style={{ textDecoration: task.completed ? 'line-through' : 'none' }}>
+              {task.product_name}
+              {task.is_important && <span className="important-badge"> ★ Срочно</span>}
+            </h3>
+            
+            {editingComment ? (
+              <div className="comment-editor">
+                <textarea
+                  value={localComment}
+                  onChange={(e) => setLocalComment(e.target.value)}
+                  className="comment-textarea"
+                  placeholder="Введите комментарий..."
+                />
+                <div className="comment-buttons">
+                  <button 
+                    onClick={handleCommentSave}
+                    className="save-button"
+                  >
+                    Сохранить
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setLocalComment(task.comment);
+                      setEditingComment(false);
+                    }}
+                    className="cancel-button"
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div 
+                className="comment-display"
+                onClick={() => setEditingComment(true)}
+              >
+                {task.comment || <span className="add-comment">Добавить комментарий...</span>}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="task-meta">
+          <span className="due-date">
+            {dueDate.toLocaleDateString('ru-RU')}
+            {task.repeat_type !== 'none' && (
+              <span className="repeat-badge">
+                {repeatOptions.find(o => o.value === task.repeat_type)?.label}
+              </span>
+            )}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AddTaskForm = ({ newTask, setNewTask, addTask }) => {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  return (
+    <div className="add-task-form">
+      <div className="basic-fields">
+        <input
+          type="text"
+          placeholder="Название задачи"
+          value={newTask.product_name}
+          onChange={e => setNewTask({...newTask, product_name: e.target.value})}
+          className="task-input"
+        />
+        <button 
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="toggle-button"
+        >
+          {showAdvanced ? 'Скрыть' : 'Доп. настройки'}
+        </button>
+      </div>
+
+      {showAdvanced && (
+        <div className="advanced-settings">
+          <div className="form-group">
+            <label>Дата выполнения:</label>
+            <DatePicker
+              selected={newTask.next_due_date}
+              onChange={date => setNewTask({...newTask, next_due_date: date})}
+              dateFormat="dd.MM.yyyy"
+              className="date-input"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Тип повторения:</label>
+            <select
+              value={newTask.repeat_type}
+              onChange={e => setNewTask({...newTask, repeat_type: e.target.value})}
+              className="repeat-select"
+            >
+              {repeatOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {newTask.repeat_type === 'weekly' && (
+            <div className="weekdays">
+              <label>Дни повторения:</label>
+              <div className="weekdays-grid">
+                {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day, i) => (
+                  <label key={i} className="weekday-label">
+                    <input
+                      type="checkbox"
+                      checked={newTask.repeat_config?.days?.includes(i)}
+                      onChange={e => {
+                        const days = newTask.repeat_config?.days || [];
+                        const newDays = e.target.checked 
+                          ? [...days, i] 
+                          : days.filter(d => d !== i);
+                        setNewTask({
+                          ...newTask,
+                          repeat_config: { ...newTask.repeat_config, days: newDays }
+                        });
+                      }}
+                    />
+                    {day}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="form-group">
+            <label>
+              <input
+                type="checkbox"
+                checked={newTask.is_important}
+                onChange={e => setNewTask({...newTask, is_important: e.target.checked})}
+              />
+              Важная задача
+            </label>
+          </div>
+
+          <textarea
+            placeholder="Комментарий"
+            value={newTask.comment}
+            onChange={e => setNewTask({...newTask, comment: e.target.value})}
+            className="task-textarea"
+          />
+        </div>
+      )}
+
+      <button 
+        onClick={addTask}
+        className="add-button"
+      >
+        Добавить задачу
+      </button>
+    </div>
+  );
+};
 
 export default TasksPage;

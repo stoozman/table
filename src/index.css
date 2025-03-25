@@ -1,9 +1,8 @@
-/* Контейнер для всей таблицы */
+/* Общие стили для таблиц */
 .table-container {
     margin: 20px 0;
 }
 
-/* Таблица – горизонтальное скроллирование */
 .table-wrapper {
     width: 100%;
     overflow-x: auto;
@@ -12,7 +11,7 @@
 table {
     width: 100%;
     border-collapse: collapse;
-    table-layout: auto; /* Изменено с fixed на auto */
+    table-layout: auto;
 }
 
 th, td {
@@ -21,13 +20,12 @@ th, td {
     border-bottom: 1px solid #ddd;
     box-sizing: border-box;
     word-wrap: break-word;
-    /* Фиксированная ширина удалена */
 }
 
 th {
     background-color: #f2f2f2;
     border-bottom: 2px solid #ddd;
-    white-space: nowrap; /* Запрещаем перенос текста */
+    white-space: nowrap;
     word-break: normal;
 }
 
@@ -35,53 +33,244 @@ tr:hover {
     background-color: #f5f5f5;
 }
 
-/* Отдельный контейнер для формы ввода, обеспечивающий горизонтальное скроллирование */
-.input-scroll {
-    width: 100%;
-    overflow-x: auto;
-    margin-top: 20px;
+/* Стили компонента задач */
+.task-container {
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 30px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 }
 
-/* Стили для самой формы ввода */
-.input-scroll form {
+.task-header {
     display: flex;
-    min-width: 1500px; /* Подберите значение, чтобы все поля поместились */
-    gap: 12px;
-    padding: 12px;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
 }
 
-.input-scroll form input,
-.input-scroll form select,
-.input-scroll form textarea {
-    flex: 1;
+.time-section {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.current-time {
+    font-size: 24px;
+    font-weight: bold;
+    color: #333;
+}
+
+.date-picker {
+    padding: 10px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    font-size: 16px;
+}
+
+.tasks-list {
+    margin-bottom: 30px;
+}
+
+/* Стили для задач */
+.task-item {
+    background: #fff;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    transition: all 0.3s ease;
+    cursor: move;
+    border-left: 4px solid transparent;
+}
+
+.task-item.completed {
+    background-color: #f8f9fa;
+    opacity: 0.7;
+    transform: scale(0.98);
+}
+
+.task-item.urgent {
+    background: #ffe6e6;
+    border-left-color: #ff4444;
+}
+
+.task-status {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.complete-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.important-badge {
+    color: #d32f2f;
+    font-weight: bold;
+    margin-left: 10px;
+}
+
+/* Секция комментариев */
+.comment-section {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #eee;
+}
+
+.comment-display {
     padding: 8px;
-    box-sizing: border-box;
-    border: 1px solid #ccc;
     border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
 }
 
-/* Если нужна общая структура для полей ввода, можно использовать дополнительные обёртки для каждого поля */
-.input-field {
+.comment-display:hover {
+    background: #f8f8f8;
+}
+
+.add-comment {
+    color: #666;
+    font-style: italic;
+}
+
+.comment-editor {
     display: flex;
     flex-direction: column;
-    flex: 1;
+    gap: 10px;
 }
 
-.disabled-button {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  
-  button {
+.comment-textarea {
+    width: 100%;
+    height: 80px;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    resize: vertical;
+}
+
+.comment-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.save-button {
     padding: 6px 12px;
-    background-color: #4285f4;
+    background: #4CAF50;
     color: white;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    margin: 2px;
-  }
-  
-  button:hover:not(.disabled-button) {
-    background-color: #3367d6;
-  }
+}
+
+.cancel-button {
+    padding: 6px 12px;
+    background: #f44336;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* Форма добавления задачи */
+.add-task-form {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+}
+
+.task-input {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 10px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    font-size: 16px;
+}
+
+.advanced-settings {
+    margin-top: 15px;
+    padding: 15px;
+    border: 1px solid #eee;
+    border-radius: 8px;
+}
+
+.weekdays-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.weekday-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.9em;
+}
+
+.add-button {
+    width: 100%;
+    padding: 15px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.add-button:hover {
+    background: #45a049;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .task-header {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .time-section {
+        flex-wrap: wrap;
+    }
+    
+    .task-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .comment-buttons {
+        flex-direction: column;
+    }
+    
+    .weekdays-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+/* Дополнительные элементы */
+.filter-controls {
+    margin-bottom: 20px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.filter-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.dragging {
+    opacity: 0.5;
+    transform: scale(0.95);
+}
