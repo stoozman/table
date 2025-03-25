@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { BrowserRouter as Router, Route, Routes, Link, Navigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import DataTable from './components/DataTable';
+import TasksPage from './TasksPage';
 
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
@@ -22,7 +24,7 @@ function App() {
 
         if (error) console.error('Error fetching data:', error);
         else {
-            console.log('Fetched data:', data); // Отладочный вывод
+            console.log('Fetched data:', data);
             setData(data);
         }
     };
@@ -33,10 +35,10 @@ function App() {
             appearance: newData.appearance,
             supplier: newData.supplier,
             manufacturer: newData.manufacturer,
-            receipt_date: newData.receipt_date || null, // Обработка пустого значения
+            receipt_date: newData.receipt_date || null,
             batch_number: newData.batch_number,
-            manufacture_date: newData.manufacture_date || null, // Обработка пустого значения
-            expiration_date: newData.expiration_date || null, // Обработка пустого значения
+            manufacture_date: newData.manufacture_date || null,
+            expiration_date: newData.expiration_date || null,
             appearance_match: newData.appearance_match,
             actual_mass: newData.actual_mass,
             inspected_metrics: newData.inspected_metrics,
@@ -47,17 +49,15 @@ function App() {
             label: newData.label,
             comment: newData.comment
         };
-    
-        console.log('Adding data:', dataToInsert); // Отладочный вывод
-    
+
         const { data: insertedData, error } = await supabase
             .from(table)
             .insert([dataToInsert]);
-    
+
         if (error) console.error('Error adding data:', error);
         else {
             console.log('Successfully added data');
-            fetchData(); // Обновить данные после добавления
+            fetchData();
         }
     };
 
@@ -70,7 +70,7 @@ function App() {
         if (error) console.error('Error updating data:', error);
         else {
             console.log('Successfully updated data');
-            fetchData(); // Обновить данные после редактирования
+            fetchData();
         }
     };
 
@@ -83,7 +83,7 @@ function App() {
         if (error) console.error('Error deleting data:', error);
         else {
             console.log('Successfully deleted data');
-            fetchData(); // Обновить данные после удаления
+            fetchData();
         }
     };
 
@@ -91,7 +91,6 @@ function App() {
         setTable(newTable);
     };
 
-    // Функция для загрузки данных из Excel
     const handleFileUpload = (event) => {
         const file = event.target.files[0];
         if (!file) return;
@@ -101,14 +100,11 @@ function App() {
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: 'array' });
 
-            // Предполагаем, что данные находятся на первом листе
             const sheetName = workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
 
-            // Преобразуем данные из Excel в массив объектов
             const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-            // Преобразуем данные в формат, подходящий для Supabase
             const formattedData = jsonData.map(row => ({
                 name: row['Наименование'],
                 appearance: row['Внешний вид'],
@@ -129,7 +125,6 @@ function App() {
                 comment: row['Комментарий']
             }));
 
-            // Сохраняем данные в Supabase
             const { data: insertedData, error } = await supabase
                 .from(table)
                 .insert(formattedData);
@@ -140,7 +135,7 @@ function App() {
             } else {
                 console.log('Successfully uploaded data:', insertedData);
                 alert('Данные успешно загружены!');
-                fetchData(); // Обновляем данные после загрузки
+                fetchData();
             }
         };
 
@@ -148,27 +143,75 @@ function App() {
     };
 
     return (
-        <div>
-            <h1>Table App</h1>
-            <button onClick={() => switchTable('raw_materials')}>Raw Materials</button>
-            <button onClick={() => switchTable('finished_products')}>Finished Products</button>
+        <Router>
+            <div>
+                <h1>Table App</h1>
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                    <Link to="/raw-materials">
+                        <button>Таблица сырья</button>
+                    </Link>
+                    <Link to="/finished-products">
+                        <button>Таблица готовой продукции</button>
+                    </Link>
+                    <Link to="/tasks">
+                        <button>Задачи</button>
+                    </Link>
+                </div>
 
-            {/* Кнопка для загрузки Excel */}
-            <div style={{ margin: '20px 0' }}>
-                <input
-                    type="file"
-                    accept=".xlsx, .xls"
-                    onChange={handleFileUpload}
-                    style={{ display: 'none' }}
-                    id="fileInput"
-                />
-                <label htmlFor="fileInput" style={{ cursor: 'pointer', padding: '10px', backgroundColor: '#007bff', color: 'white', borderRadius: '5px' }}>
-                    Загрузить данные из Excel
-                </label>
+                <Routes>
+                    <Route path="/" element={<Navigate to="/tasks" replace />} />
+                    <Route path="/raw-materials" element={
+                        <>
+                            <button onClick={() => switchTable('raw_materials')}>Raw Materials</button>
+                            <div style={{ margin: '20px 0' }}>
+                                <input
+                                    type="file"
+                                    accept=".xlsx, .xls"
+                                    onChange={handleFileUpload}
+                                    style={{ display: 'none' }}
+                                    id="fileInput"
+                                />
+                                <label htmlFor="fileInput" style={{ cursor: 'pointer', padding: '10px', backgroundColor: '#007bff', color: 'white', borderRadius: '5px' }}>
+                                    Загрузить данные из Excel
+                                </label>
+                            </div>
+                            <DataTable 
+                                data={data} 
+                                table={table} 
+                                onAdd={addData} 
+                                onEdit={editData} 
+                                onDelete={deleteData} 
+                            />
+                        </>
+                    } />
+                    <Route path="/finished-products" element={
+                        <>
+                            <button onClick={() => switchTable('finished_products')}>Finished Products</button>
+                            <div style={{ margin: '20px 0' }}>
+                                <input
+                                    type="file"
+                                    accept=".xlsx, .xls"
+                                    onChange={handleFileUpload}
+                                    style={{ display: 'none' }}
+                                    id="fileInput"
+                                />
+                                <label htmlFor="fileInput" style={{ cursor: 'pointer', padding: '10px', backgroundColor: '#007bff', color: 'white', borderRadius: '5px' }}>
+                                    Загрузить данные из Excel
+                                </label>
+                            </div>
+                            <DataTable 
+                                data={data} 
+                                table={table} 
+                                onAdd={addData} 
+                                onEdit={editData} 
+                                onDelete={deleteData} 
+                            />
+                        </>
+                    } />
+                    <Route path="/tasks" element={<TasksPage />} />
+                </Routes>
             </div>
-
-            <DataTable data={data} table={table} onAdd={addData} onEdit={editData} onDelete={deleteData} />
-        </div>
+        </Router>
     );
 }
 
