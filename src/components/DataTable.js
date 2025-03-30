@@ -1,40 +1,59 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import DataForm from './DataForm';
-import { generateDocument, saveDocumentToDropbox, getDropboxShareableLink } from '../utils/documentGenerator';
+import { 
+    generateDocument, 
+    saveDocumentToDropbox, 
+    getDropboxShareableLink,
+    deleteDocumentFromDropbox // Новая функция для удаления файла из Dropbox
+} from '../utils/documentGenerator';
 import { generateLabelDocument } from '../utils/labelGenerator';
 import useTableSearch from '../hooks/useTableSearch';
 import SearchControls from './SearchControls';
 
-function DataTable({ data, table, onAdd, onEdit, onDelete }) {
+function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     const [documentLinks, setDocumentLinks] = useState({});
     const [labelLinks, setLabelLinks] = useState({});
     const [isTableVisible, setIsTableVisible] = useState(true);
-    const [isSearchVisible, setIsSearchVisible] = useState(true); // По умолчанию панель поиска видима
+    const [isSearchVisible, setIsSearchVisible] = useState(true);
     const [editingItem, setEditingItem] = useState(null);
 
-    // Логика поиска
     const { searchParams, filteredData, handleSearchChange } = useTableSearch(data);
 
-    // Функция для экспорта в Excel
+    // Функция очистки имени файла
+    const cleanFileName = (name) => {
+        const transliterate = (str) => {
+            const ru = {
+                'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd',
+                'е': 'e', 'ё': 'yo', 'ж': 'zh', 'з': 'z', 'и': 'i',
+                'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n',
+                'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't',
+                'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch',
+                'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '',
+                'э': 'e', 'ю': 'yu', 'я': 'ya'
+            };
+
+            return str.toLowerCase().split('').map(char => ru[char] || char).join('');
+        };
+
+        let cleanName = transliterate(name);
+        cleanName = cleanName
+            .replace(/[^a-z0-9_\-.]/g, '_')
+            .replace(/_+/g, '_')
+            .replace(/^_|_$/g, '')
+            .substring(0, 100);
+
+        return cleanName || `file_${Date.now()}`;
+    };
+
+    // Экспорт в Excel
     const exportToExcel = () => {
         const headers = [
-            'Наименование',
-            'Внешний вид',
-            'Поставщик',
-            'Производитель',
-            'Дата поступления',
-            'Дата проверки',
-            'Номер партии',
-            'Дата изготовления',
-            'Срок годности',
-            'Соответствие внешнего вида',
-            'Фактическая масса',
-            'Проверяемые показатели',
-            'Результат исследования',
-            'Норматив по паспорту',
-            'ФИО',
-            'Комментарий'
+            'Наименование', 'Внешний вид', 'Поставщик', 'Производитель',
+            'Дата поступления', 'Дата проверки', 'Номер партии',
+            'Дата изготовления', 'Срок годности', 'Соответствие внешнего вида',
+            'Фактическая масса', 'Проверяемые показатели', 'Результат исследования',
+            'Норматив по паспорту', 'ФИО', 'Комментарий'
         ];
 
         const wsData = [
@@ -62,59 +81,112 @@ function DataTable({ data, table, onAdd, onEdit, onDelete }) {
         const ws = XLSX.utils.aoa_to_sheet(wsData);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Данные');
-        XLSX.writeFile(wb, 'Сырьё.xlsx');
+        XLSX.writeFile(wb, `${table === 'raw_materials' ? 'Сырьё' : 'Продукция'}.xlsx`);
     };
 
-    // Функция для создания акта
+    // Создание акта
     const handleActClick = async (item) => {
         try {
             const docBlob = await generateDocument(item);
-            const fileName = `${item.name}_${item.batch_number}.docx`;
+            const fileName = cleanFileName(`${item.name}_${item.batch_number}.docx`);
             const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-    
-            // Локальное скачивание
+
+            // Создаем ссылку для скачивания документа
             const url = URL.createObjectURL(docBlob);
             const a = document.createElement('a');
             a.href = url;
             a.download = fileName;
             document.body.appendChild(a);
             a.click();
-    
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-    
-            // Загрузка в Dropbox и получение публичной ссылки
-            const fileData = await saveDocumentToDropbox(docBlob, fileName, accessToken);
+
+            // Загружаем документ в Dropbox
+            const uploadPath = `/${fileName}`;
+            const fileData = await saveDocumentToDropbox(docBlob, uploadPath, accessToken);
+
             if (fileData) {
-                const shareableLink = await getDropboxShareableLink(fileData.path_lower, accessToken);
+                // Получаем общедоступную ссылку Dropbox
+                const shareableLink = await getDropboxShareableLink(uploadPath, accessToken);
                 if (shareableLink) {
-                    // Обновление состояния компонента
-                    setDocumentLinks(prev => ({
-                        ...prev,
-                        [item.id]: shareableLink
-                    }));
-    
-                    // Обновление записи в базе данных
-                    await supabase
+                    const formattedLink = shareableLink.replace('?dl=0', '?raw=1');
+                    const { data: updatedData, error } = await supabase
                         .from(table)
-                        .update({ act_link: shareableLink }) // Имя поля в вашей БД может отличаться
-                        .eq('id', item.id);
+                        .update({ act_link: formattedLink })
+                        .eq('id', item.id)
+                        .select();
+
+                    if (error) {
+                        console.error('Ошибка обновления в Supabase:', error);
+                        throw error;
+                    }
+
+                    // Обновляем данные родительского компонента, заменяя элемент на месте
+                    if (updatedData && updatedData.length > 0) {
+                        onEdit(updatedData[0]);
+                    }
+
+                    setDocumentLinks(prev => ({ ...prev, [item.id]: formattedLink }));
                 }
             }
+
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
         } catch (error) {
-            console.error('Ошибка при создании документа:', error);
-            alert('Ошибка при создании документа!');
+            console.error('Ошибка:', error.message);
+            alert(`Ошибка создания акта: ${error.message}`);
         }
     };
 
-    // Функция для создания наклейки
+    // Удаление акта (очищаем act_link и удаляем файл из Dropbox)
+    const handleActDelete = async (item) => {
+        try {
+            const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
+            // Определяем имя файла и путь (предполагается, что имя файла можно получить так же, как при загрузке)
+            const fileName = cleanFileName(`${item.name}_${item.batch_number}.docx`);
+            const uploadPath = `/${fileName}`;
+
+            // Пытаемся удалить файл из Dropbox
+            const dropboxDeleteSuccess = await deleteDocumentFromDropbox(uploadPath, accessToken);
+            if (!dropboxDeleteSuccess) {
+                console.error("Ошибка удаления файла из Dropbox");
+                // Можно решить: продолжать обновление записи или остановиться
+            }
+
+            // Очищаем поле act_link в Supabase (устанавливаем null)
+            const { data: updatedData, error } = await supabase
+                .from(table)
+                .update({ act_link: null })
+                .eq('id', item.id)
+                .select();
+
+            if (error) {
+                console.error('Ошибка обновления записи в Supabase:', error);
+                throw error;
+            }
+
+            // Обновляем данные родительского компонента
+            if (updatedData && updatedData.length > 0) {
+                onEdit(updatedData[0]);
+            }
+
+            // Обновляем локальное состояние для ссылки
+            setDocumentLinks(prev => {
+                const newState = { ...prev };
+                delete newState[item.id];
+                return newState;
+            });
+        } catch (error) {
+            console.error('Ошибка удаления акта:', error.message);
+            alert(`Ошибка удаления акта: ${error.message}`);
+        }
+    };
+
+    // Создание этикетки
     const handleLabelClick = async (item) => {
         try {
             const docBlob = await generateLabelDocument(item);
-            const fileName = `${item.name}_${item.batch_number}_label.docx`;
+            const fileName = cleanFileName(`${item.name}_${item.batch_number}_label.docx`);
             const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
 
-            // Локальное скачивание
             const url = URL.createObjectURL(docBlob);
             const a = document.createElement('a');
             a.href = url;
@@ -122,71 +194,49 @@ function DataTable({ data, table, onAdd, onEdit, onDelete }) {
             document.body.appendChild(a);
             a.click();
 
-            // Загрузка в Dropbox
-            const fileData = await saveDocumentToDropbox(docBlob, fileName, accessToken);
+            const uploadPath = `/${fileName}`;
+            const fileData = await saveDocumentToDropbox(docBlob, uploadPath, accessToken);
+
             if (fileData) {
-                const shareableLink = await getDropboxShareableLink(fileData.path_lower, accessToken);
+                const shareableLink = await getDropboxShareableLink(uploadPath, accessToken);
                 if (shareableLink) {
-                    setLabelLinks(prev => ({
-                        ...prev,
-                        [item.id]: shareableLink
-                    }));
+                    setLabelLinks(prev => ({ ...prev, [item.id]: shareableLink }));
                 }
             }
 
-            // Очистка
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
         } catch (error) {
-            console.error('Ошибка при создании этикетки:', error);
-            alert('Ошибка генерации этикетки!');
+            console.error('Ошибка:', error);
+            alert('Ошибка создания этикетки!');
         }
     };
 
-    // Функция для просмотра документа
+    // Просмотр документа
     const handleViewDocument = (itemId, type = 'act') => {
-    const item = filteredData.find(item => item.id === itemId);
-    if (item) {
-        if (type === 'act' && item.act_link) {
-            window.open(item.act_link, '_blank');
-        } else if (type === 'label' && item.label_link) {
-            window.open(item.label_link, '_blank');
+        const item = filteredData.find(item => item.id === itemId);
+        if (!item) return;
+
+        const documentLink = type === 'act'
+            ? item.act_link
+            : item.label_link;
+
+        if (documentLink?.startsWith('http')) {
+            window.open(documentLink, '_blank', 'noopener,noreferrer');
         } else {
-            alert('Документ еще не доступен!');
+            alert('Документ ещё не доступен! Обновите страницу через несколько секунд.');
         }
-    }
-};
-
-    // Функция для переключения видимости таблицы
-    const toggleTableVisibility = () => {
-        setIsTableVisible(!isTableVisible);
     };
 
-    // Функция для переключения видимости панели поиска
-    const toggleSearchVisibility = () => {
-        setIsSearchVisible(prevState => !prevState);
-        console.log("Search visibility toggled:", !isSearchVisible); // Отладочный вывод
-    };
+    // Управление интерфейсом
+    const toggleTableVisibility = () => setIsTableVisible(!isTableVisible);
+    const toggleSearchVisibility = () => setIsSearchVisible(!isSearchVisible);
+    const handleEditLocal = (item) => setEditingItem(item);
+    const handleDelete = (id) => onDelete(id);
 
-    // Функция для редактирования
-    const handleEdit = (item) => {
-        setEditingItem(item);
-    };
-
-    // Функция для удаления
-    const handleDelete = (id) => {
-        onDelete(id);
-    };
-
-    // Добавим функцию для сброса фильтров
+    // Сброс фильтров
     const resetFilters = () => {
-        // Здесь мы сбрасываем все поля поиска
-        const emptyParams = Object.keys(searchParams).reduce((acc, key) => {
-            acc[key] = '';
-            return acc;
-        }, {});
-        
-        Object.keys(emptyParams).forEach(key => {
+        Object.keys(searchParams).forEach(key => {
             handleSearchChange({ target: { name: key, value: '' } });
         });
     };
@@ -195,91 +245,43 @@ function DataTable({ data, table, onAdd, onEdit, onDelete }) {
         <div className="table-container">
             <h2>{table === 'raw_materials' ? 'Сырье' : 'Готовая продукция'}</h2>
 
-            {/* Кнопки управления */}
-            <div className="controls" style={{ 
-                display: 'flex', 
-                gap: '10px', 
+            <div className="controls" style={{
+                display: 'flex',
+                gap: '10px',
                 marginBottom: '10px',
                 flexWrap: 'wrap'
             }}>
-                <button
-                    onClick={toggleSearchVisibility}
-                    className="toggle-search-button"
-                    style={{
-                        padding: '8px 16px',
-                        backgroundColor: '#4CAF50',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                    }}
-                >
+                <button onClick={toggleSearchVisibility} className="toggle-search-button">
                     {isSearchVisible ? "Скрыть поиск" : "Показать поиск"}
                 </button>
 
-                <button
-                    onClick={toggleTableVisibility}
-                    className="toggle-table-button"
-                    style={{
-                        padding: '8px 16px',
-                        backgroundColor: '#2196F3',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                    }}
-                >
+                <button onClick={toggleTableVisibility} className="toggle-table-button">
                     {isTableVisible ? "Свернуть таблицу" : "Развернуть таблицу"}
                 </button>
 
-                <button
-                    onClick={exportToExcel}
-                    className="export-excel-button"
-                    style={{
-                        padding: '8px 16px',
-                        backgroundColor: '#ff9800',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                    }}
-                >
+                <button onClick={exportToExcel} className="export-excel-button">
                     Экспорт в Excel
                 </button>
             </div>
 
-            {/* Поля для поиска с проверкой isSearchVisible */}
             {isSearchVisible && (
                 <div>
-                    <SearchControls 
-                        searchParams={searchParams} 
-                        handleSearchChange={handleSearchChange} 
-                        isVisible={true} // Всегда true, т.к. мы уже проверили isSearchVisible выше
+                    <SearchControls
+                        searchParams={searchParams}
+                        handleSearchChange={handleSearchChange}
                     />
-                    <div style={{ 
-                        display: 'flex', 
-                        justifyContent: 'flex-end', 
-                        marginTop: '10px',
-                        marginBottom: '10px'
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                        margin: '10px 0'
                     }}>
-                        <button
-                            onClick={resetFilters}
-                            style={{
-                                padding: '8px 16px',
-                                backgroundColor: '#f44336',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer'
-                            }}
-                        >
+                        <button onClick={resetFilters} className="reset-filters-button">
                             Сбросить фильтры
                         </button>
                     </div>
                 </div>
             )}
 
-            {/* Таблица */}
             {isTableVisible && (
                 <div className="table-wrapper">
                     <table>
@@ -301,9 +303,7 @@ function DataTable({ data, table, onAdd, onEdit, onDelete }) {
                                 <th>Норматив по паспорту</th>
                                 <th>ФИО</th>
                                 <th>Акт</th>
-                                <th>Просмотр акта</th>
                                 <th>Наклейка</th>
-                                
                                 <th>Комментарий</th>
                                 <th>Действия</th>
                             </tr>
@@ -326,41 +326,36 @@ function DataTable({ data, table, onAdd, onEdit, onDelete }) {
                                     <td>{item.investigation_result}</td>
                                     <td>{item.passport_standard}</td>
                                     <td>{item.full_name}</td>
-
-                                    {/* Кнопки для акта */}
                                     <td>
-                                        <button onClick={() => handleActClick(item)}>
-                                            Создать акт
-                                        </button>
+                                        {item.act_link ? (
+                                            <>
+                                                <button
+                                                    onClick={() => handleViewDocument(item.id, 'act')}
+                                                    className="view-document-button"
+                                                >
+                                                    Просмотр
+                                                </button>
+                                                <button
+                                                    onClick={() => handleActDelete(item)}
+                                                    className="delete-document-button"
+                                                >
+                                                    Удалить
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <button onClick={() => handleActClick(item)}>
+                                                Создать акт
+                                            </button>
+                                        )}
                                     </td>
-                                    <td>
-    <button
-        onClick={() => handleViewDocument(item.id, 'act')}
-        disabled={!item.act_link} // Предполагается, что в данных есть поле act_link
-        style={{ 
-            padding: '4px 8px',
-            backgroundColor: item.act_link ? '#28a745' : '#6c757d',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: item.act_link ? 'pointer' : 'not-allowed'
-        }}
-    >
-        {item.act_link ? "Просмотр" : "Не готово"}
-    </button>
-</td>
-
-                                    {/* Кнопки для наклейки */}
                                     <td>
                                         <button onClick={() => handleLabelClick(item)}>
                                             Создать наклейку
                                         </button>
                                     </td>
-                                    
-
                                     <td>{item.comment}</td>
                                     <td>
-                                        <button onClick={() => handleEdit(item)}>Редактировать</button>
+                                        <button onClick={() => handleEditLocal(item)}>Редактировать</button>
                                         <button onClick={() => handleDelete(item.id)}>Удалить</button>
                                     </td>
                                 </tr>
@@ -370,9 +365,13 @@ function DataTable({ data, table, onAdd, onEdit, onDelete }) {
                 </div>
             )}
 
-            {/* Форма для добавления данных */}
             <div className="input-scroll">
-                <DataForm onAdd={onAdd} onEdit={onEdit} editingItem={editingItem} />
+                <DataForm
+                    onAdd={onAdd}
+                    onEdit={onEdit}
+                    editingItem={editingItem}
+                    setEditingItem={setEditingItem}
+                />
             </div>
         </div>
     );

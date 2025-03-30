@@ -18,14 +18,14 @@ function App() {
     }, [table]);
 
     const fetchData = async () => {
-        let { data, error } = await supabase
+        let { data: fetchedData, error } = await supabase
             .from(table)
             .select('*');
 
         if (error) console.error('Error fetching data:', error);
         else {
-            console.log('Fetched data:', data);
-            setData(data);
+            console.log('Fetched data:', fetchedData);
+            setData(fetchedData);
         }
     };
 
@@ -62,15 +62,18 @@ function App() {
     };
 
     const editData = async (updatedData) => {
-        const { data, error } = await supabase
+        const { data: updatedRecord, error } = await supabase
             .from(table)
             .update(updatedData)
-            .eq('id', updatedData.id);
-
-        if (error) console.error('Error updating data:', error);
-        else {
-            console.log('Successfully updated data');
-            fetchData();
+            .eq('id', updatedData.id)
+            .select();
+    
+        if (error) {
+            console.error('Error updating data:', error);
+        } else if (updatedRecord && updatedRecord.length > 0) {
+            setData(prevData =>
+                prevData.map(item => item.id === updatedData.id ? updatedRecord[0] : item)
+            );
         }
     };
 
@@ -160,7 +163,7 @@ function App() {
 
                 <Routes>
                     <Route path="/" element={<Navigate to="/tasks" replace />} />
-                    <Route path="/raw-materials" element={
+                    <Route path="/raw-materials" element={(
                         <>
                             <button onClick={() => switchTable('raw_materials')}>Raw Materials</button>
                             <div style={{ margin: '20px 0' }}>
@@ -181,10 +184,11 @@ function App() {
                                 onAdd={addData} 
                                 onEdit={editData} 
                                 onDelete={deleteData} 
+                                supabase={supabase} 
                             />
                         </>
-                    } />
-                    <Route path="/finished-products" element={
+                    )} />
+                    <Route path="/finished-products" element={(
                         <>
                             <button onClick={() => switchTable('finished_products')}>Finished Products</button>
                             <div style={{ margin: '20px 0' }}>
@@ -205,9 +209,10 @@ function App() {
                                 onAdd={addData} 
                                 onEdit={editData} 
                                 onDelete={deleteData} 
+                                supabase={supabase} 
                             />
                         </>
-                    } />
+                    )} />
                     <Route path="/tasks" element={<TasksPage />} />
                 </Routes>
             </div>

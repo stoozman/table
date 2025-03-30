@@ -1,344 +1,207 @@
-import { Document, Packer, Paragraph, Table, TableCell, TableRow, BorderStyle, WidthType, AlignmentType, HeadingLevel, TableLayoutType, Header } from 'docx';
+import { Document, Packer, Paragraph, Table, TableCell, TableRow, BorderStyle, WidthType, AlignmentType, HeadingLevel, TableLayoutType } from 'docx';
 import axios from 'axios';
 
-export async function generateDocument(data) {
-    const doc = new Document({
-        sections: [
-            {
-                properties: {
-                    page: {
-                        margin: {
-                            top: 1000, // Увеличенный верхний отступ для размещения колонтитула
-                        }
-                    }
-                },
-                
+// Создание строк таблицы
+const createTableRow = (cells, isHeader = false) => {
+    return new TableRow({
+        children: cells.map((text, index) => {
+            const cellWidths = [10, 40, 25, 25];
+            return new TableCell({
+                width: { size: cellWidths[index], type: WidthType.PERCENTAGE },
                 children: [
-                    // Пустые параграфы для отступа сверху
                     new Paragraph({
-                        text: "",
-                        spacing: {
-                            after: 200,
-                        },
-                    }),
-                    new Paragraph({
-                        text: "",
-                        spacing: {
-                            after: 200,
-                        },
-                    }),
+                        text: text || '-',
+                        bold: isHeader,
+                        alignment: AlignmentType.CENTER,
+                        spacing: { before: 50, after: 50 }
+                    })
+                ]
+            });
+        })
+    });
+};
 
-                    // Заголовок "АКТ"
+export async function generateDocument(data) {
+    try {
+        const doc = new Document({
+            sections: [{
+                properties: { 
+                    page: { 
+                        margin: { top: 1000 },
+                        size: { width: 11906, height: 16838, orientation: 'portrait' }
+                    } 
+                },
+                children: [
                     new Paragraph({
                         text: "АКТ",
                         heading: HeadingLevel.HEADING_1,
                         alignment: AlignmentType.CENTER,
                         bold: true,
-                        spacing: {
-                            after: 200,
-                        },
+                        spacing: { after: 400 }
                     }),
 
-                    // Данные в виде текста вместо первой таблицы
-                    new Paragraph({
-                        text: `Наименование: ${data.name || ""}`,
-                        spacing: { after: 100 },
-                    }),
-                    new Paragraph({
-                        text: `Поставщик: ${data.supplier || ""}`,
-                        spacing: { after: 100 },
-                    }),
-                    new Paragraph({
-                        text: `Производитель: ${data.manufacturer || ""}`,
-                        spacing: { after: 100 },
-                    }),
-                    new Paragraph({
-                        text: `Дата поступления: ${data.receipt_date ? new Date(data.receipt_date).toLocaleDateString() : ""}`,
-                        spacing: { after: 100 },
-                    }),
-                    new Paragraph({
-                        text: `Дата проверки: ${data.check_date ? new Date(data.check_date).toLocaleDateString() : ""}`,
-                        spacing: { after: 100 },
-                    }),
-                    new Paragraph({
-                        text: `№ партии: ${data.batch_number || ""}`,
-                        spacing: { after: 100 },
-                    }),
-                    new Paragraph({
-                        text: `Дата изготовления: ${data.manufacture_date ? new Date(data.manufacture_date).toLocaleDateString() : ""}`,
-                        spacing: { after: 100 },
-                    }),
+                    ...[
+                        `Наименование: ${data.name || "Не указано"}`,
+                        `Поставщик: ${data.supplier || "Не указан"}`,
+                        `Производитель: ${data.manufacturer || "Не указан"}`,
+                        `Дата поступления: ${data.receipt_date ? new Date(data.receipt_date).toLocaleDateString() : "Не указана"}`,
+                        `Дата проверки: ${data.check_date ? new Date(data.check_date).toLocaleDateString() : "Не указана"}`,
+                        `№ партии: ${data.batch_number || "Не указан"}`,
+                        `Дата изготовления: ${data.manufacture_date ? new Date(data.manufacture_date).toLocaleDateString() : "Не указана"}`
 
-                    // Результаты проверки
-                    new Paragraph({
-                        text: "Результаты проверки:",
-                        bold: true,
-                        spacing: {
-                            before: 400,
-                            after: 200,
-                        },
-                    }),
+                    ].map(text => new Paragraph({ 
+                        text, 
+                        spacing: { after: 100 },
+                        alignment: AlignmentType.LEFT 
+                    })),
 
-                    // Вторая таблица результатов остается без изменений
                     new Table({
-                        width: {
-                            size: 100,
-                            type: WidthType.PERCENTAGE,
-                        },
+                        width: { size: 100, type: WidthType.PERCENTAGE },
                         layout: TableLayoutType.FIXED,
                         borders: {
-                            top: { style: BorderStyle.SINGLE, size: 1, color: "#000000" },
-                            bottom: { style: BorderStyle.SINGLE, size: 1, color: "#000000" },
-                            left: { style: BorderStyle.SINGLE, size: 1, color: "#000000" },
-                            right: { style: BorderStyle.SINGLE, size: 1, color: "#000000" },
+                            top: { style: BorderStyle.SINGLE, size: 2, color: "#000000" },
+                            bottom: { style: BorderStyle.SINGLE, size: 2, color: "#000000" },
+                            left: { style: BorderStyle.SINGLE, size: 2, color: "#000000" },
+                            right: { style: BorderStyle.SINGLE, size: 2, color: "#000000" },
                             insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: "#000000" },
                             insideVertical: { style: BorderStyle.SINGLE, size: 1, color: "#000000" },
                         },
                         rows: [
-                            // Заголовок таблицы
-                            new TableRow({
-                                children: [
-                                    new TableCell({
-                                        width: {
-                                            size: 10,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: "№ п/п",
-                                            bold: true,
-                                            alignment: AlignmentType.CENTER,
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                    new TableCell({
-                                        width: {
-                                            size: 40,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: "Наименование показателя",
-                                            bold: true,
-                                            alignment: AlignmentType.CENTER,
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                    new TableCell({
-                                        width: {
-                                            size: 25,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: "Норма",
-                                            bold: true,
-                                            alignment: AlignmentType.CENTER,
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                    new TableCell({
-                                        width: {
-                                            size: 25,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: "Факт",
-                                            bold: true,
-                                            alignment: AlignmentType.CENTER,
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                ],
-                            }),
-                            // Строка 1 - Внешний вид
-                            new TableRow({
-                                children: [
-                                    new TableCell({
-                                        width: {
-                                            size: 10,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: "1.",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                    new TableCell({
-                                        width: {
-                                            size: 40,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: "Внешний вид",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                    new TableCell({
-                                        width: {
-                                            size: 25,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: data.appearance || "", // Используем значение из data.appearance
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                    new TableCell({
-                                        width: {
-                                            size: 25,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: data.appearance_match || "Соотв.",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                ],
-                            }),
-                            // Строка 2 - Проверяемые показатели
-                            new TableRow({
-                                children: [
-                                    new TableCell({
-                                        width: {
-                                            size: 10,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: "2.",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                    new TableCell({
-                                        width: {
-                                            size: 40,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: data.inspected_metrics || "",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                    new TableCell({
-                                        width: {
-                                            size: 25,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: data.passport_standard || "",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                    new TableCell({
-                                        width: {
-                                            size: 25,
-                                            type: WidthType.PERCENTAGE,
-                                        },
-                                        children: [new Paragraph({
-                                            text: data.investigation_result || "",
-                                            spacing: { before: 50, after: 50 },
-                                        })],
-                                    }),
-                                ],
-                            }),
-                        ],
+                            createTableRow(["№ п/п", "Наименование показателя", "Норма", "Факт"], true),
+                            createTableRow([
+                                "1.",
+                                "Внешний вид",
+                                data.appearance || "Стандартный",
+                                data.appearance_match || "Соответствует"
+                            ]),
+                            createTableRow([
+                                "2.",
+                                data.inspected_metrics || "Основные показатели",
+                                data.passport_standard || "Нет данных",
+                                data.investigation_result || "Соответствует"
+                            ])
+                        ]
                     }),
 
-                    // Подпись
                     new Paragraph({
                         text: "Заведующий лаборатории: _________________________________Гадзиковский С.В.",
-                        spacing: {
-                            before: 400,
-                        },
-                    }),
-                ],
-            },
-        ],
-    });
+                        spacing: { before: 400 },
+                        alignment: AlignmentType.LEFT
+                    })
+                ]
+            }]
+        });
 
-    // Заменяем Buffer на Blob для работы в браузере
-    return Packer.toBlob(doc);
-}
-
-export async function saveDocumentToDropbox(fileBlob, fileName, accessToken) {
-    const url = 'https://content.dropboxapi.com/2/files/upload';
-    const headers = {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/octet-stream',
-        'Dropbox-API-Arg': JSON.stringify({
-            path: `/${fileName}`,
-            mode: 'add',
-            autorename: true,
-            mute: false
-        })
-    };
-
-    try {
-        const response = await axios.post(url, fileBlob, { headers: headers });
-        console.log('File uploaded successfully:', response.data);
-        return response.data;
+        return await Packer.toBlob(doc);
     } catch (error) {
-        console.error('Error uploading file:', error.response ? error.response.data : error.message);
-        return null;
+        console.error('Ошибка генерации документа:', error);
+        throw new Error('Не удалось создать документ');
     }
 }
 
-// Добавляем новую функцию для получения общедоступной ссылки на файл из Dropbox
-export async function getDropboxShareableLink(filePath, accessToken) {
-    try {
-        const response = await axios({
-            method: 'POST',
-            url: 'https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings',
+export async function saveDocumentToDropbox(fileBlob, path, accessToken) {
+    // Убираем начальный слеш, если он есть
+    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+    
+    const response = await axios.post(
+        'https://content.dropboxapi.com/2/files/upload',
+        fileBlob,
+        {
             headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/octet-stream',
+                'Dropbox-API-Arg': JSON.stringify({
+                    path: `/${cleanPath}`,
+                    mode: 'overwrite'
+                })
+            }
+        }
+    );
+    return response.data;
+}
+
+export async function getDropboxShareableLink(filePath, accessToken) {
+    // Убираем начальный слеш, если он есть
+    const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+
+    try {
+        // Первый способ - создание новой общей ссылки
+        const createResponse = await axios.post(
+            'https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings',
+            { 
+                path: `/${cleanPath}`, 
+                settings: { 
+                    requested_visibility: 'public',
+                    audience: 'public'
+                } 
             },
-            data: {
-                path: filePath,
-                settings: {
-                    requested_visibility: "public",
-                    audience: "public",
-                    access: "viewer"
-                }
+            { 
+                headers: { 
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                } 
             }
-        });
+        );
+        
+        return createResponse.data.url.replace('?dl=0', '?raw=1');
 
-        if (response.data && response.data.url) {
-            console.log('Shared link created:', response.data.url);
-            return response.data.url;
-        }
-
-        return null;
     } catch (error) {
-        // Проверка на случай, если ссылка уже существует
-        if (error.response &&
-            error.response.data &&
-            error.response.data.error &&
-            error.response.data.error['.tag'] === 'shared_link_already_exists') {
-
+        // Если ошибка связана с существованием ссылки
+        if (error.response && error.response.data.error_summary.includes('shared_link_already_exists')) {
             try {
-                // Получаем существующие ссылки
-                const existingLinksResponse = await axios({
-                    method: 'POST',
-                    url: 'https://api.dropboxapi.com/2/sharing/list_shared_links',
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Content-Type': 'application/json'
+                // Получаем существующую ссылку
+                const listResponse = await axios.post(
+                    'https://api.dropboxapi.com/2/sharing/list_shared_links',
+                    { 
+                        path: `/${cleanPath}`,
+                        direct_only: true
                     },
-                    data: {
-                        path: filePath
+                    { 
+                        headers: { 
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        } 
                     }
-                });
+                );
+                
+                const existingLink = listResponse.data.links?.[0]?.url;
+                return existingLink ? existingLink.replace('?dl=0', '?raw=1') : null;
 
-                if (existingLinksResponse.data &&
-                    existingLinksResponse.data.links &&
-                    existingLinksResponse.data.links.length > 0) {
-                    console.log('Found existing shared link:', existingLinksResponse.data.links[0].url);
-                    return existingLinksResponse.data.links[0].url;
-                }
             } catch (listError) {
-                console.error('Ошибка при получении существующих ссылок:', listError);
+                console.error('Ошибка получения существующей ссылки:', listError.response ? listError.response.data : listError.message);
+                
+                // Возвращаем исходную ссылку, если не удалось получить новую
+                return `https://www.dropbox.com/scl/fi/${cleanPath}`.replace('?dl=0', '?raw=1');
             }
         }
 
-        console.error('Ошибка при создании общедоступной ссылки:', error.response ? error.response.data : error.message);
-        return null;
+        // Для других типов ошибок
+        console.error('Ошибка создания общей ссылки:', error.response ? error.response.data : error.message);
+        throw new Error('Не удалось создать общедоступную ссылку');
+    }
+}
+
+export async function deleteDocumentFromDropbox(filePath, accessToken) {
+    // Убираем начальный слеш, если он есть
+    const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+
+    try {
+        const response = await axios.post(
+            'https://api.dropboxapi.com/2/files/delete_v2',
+            { 
+                path: `/${cleanPath}`
+            },
+            { 
+                headers: { 
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                } 
+            }
+        );
+        
+        return true; // Возвращаем true, если удаление успешно
+    } catch (error) {
+        console.error('Ошибка удаления файла из Dropbox:', error.response ? error.response.data : error.message);
+        return false; // Возвращаем false в случае ошибки
     }
 }
