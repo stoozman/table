@@ -38,6 +38,23 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     }
   };
 
+  const renderList = (value) => {
+    let arr = [];
+    try {
+      if (typeof value === 'string') {
+        arr = JSON.parse(value);
+        if (!Array.isArray(arr)) {
+          arr = [value];
+        }
+      } else if (Array.isArray(value)) {
+        arr = value;
+      }
+    } catch (e) {
+      arr = Array.isArray(value) ? value : [value];
+    }
+    return arr.map((item, idx) => <div key={idx}>{item}</div>);
+  };
+
   // Очистка имени файла (транслитерация и замена недопустимых символов)
   const cleanFileName = (name) => {
     const transliterate = (str) => {
@@ -370,85 +387,105 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
                 <th>Результат исследования</th>
                 <th>Норматив по паспорту</th>
                 <th>ФИО</th>
+                <th>Акт</th>
+                <th>Наклейка</th>
                 <th>Статус</th>
                 <th>Документы</th>
                 <th>Действия</th>
               </tr>
             </thead>
             <tbody>
-              {filteredData.map((item) => (
-                <tr key={item.id} style={getRowStyle(item.status)}>
-                  <td>{item.name}</td>
-                  <td>{item.appearance}</td>
-                  <td>{item.supplier}</td>
-                  <td>{item.manufacturer}</td>
-                  <td>{item.receipt_date ? new Date(item.receipt_date).toLocaleDateString() : '-'}</td>
-                  <td>{item.check_date ? new Date(item.check_date).toLocaleDateString() : '-'}</td>
-                  <td>{item.batch_number}</td>
-                  <td>{item.manufacture_date ? new Date(item.manufacture_date).toLocaleDateString() : '-'}</td>
-                  <td>{item.expiration_date}</td>
-                  <td>{item.appearance_match}</td>
-                  <td>{item.actual_mass}</td>
-                  <td>{item.inspected_metrics}</td>
-                  <td>{item.investigation_result}</td>
-                  <td>{item.passport_standard}</td>
-                  <td>{item.full_name}</td>
-                  <td>
-                    <select
-                      value={item.status || ''}
-                      onChange={async (e) => {
-                        const newStatus = e.target.value;
-                        const { data: updatedData, error } = await supabase
-                          .from(table)
-                          .update({ status: newStatus })
-                          .eq('id', item.id)
-                          .select();
-                        if (error) {
-                          console.error("Ошибка обновления статуса:", error);
-                          alert("Ошибка обновления статуса");
-                        } else if (updatedData && updatedData.length > 0) {
-                          onEdit(updatedData[0]);
-                        }
-                      }}
-                    >
-                      <option value="">--Выберите статус--</option>
-                      <option value="Годное">Годное</option>
-                      <option value="На карантине">На карантине</option>
-                      <option value="На исследовании">На исследовании</option>
-                      <option value="Брак">Брак</option>
-                    </select>
-                  </td>
-                  {/* Столбец "Документы" */}
-                  <td>
-                    {item.documents && item.documents.length > 0 && item.documents.map((doc, index) => (
-                      <div key={index} style={{ marginBottom: '5px', border: '1px solid #ccc', padding: '5px' }}>
-                        <div>{doc.name}</div>
-                        <button onClick={() => handleViewDocument(doc.link)}>Просмотр</button>
-                        <button onClick={() => handleDocumentDelete(item, index)}>Удалить</button>
-                      </div>
-                    ))}
-                    <div style={{ marginTop: '10px' }}>
-                      <input
-                        type="text"
-                        placeholder="Название документа"
-                        value={docNames[item.id] || ''}
-                        onChange={(e) => setDocNames({ ...docNames, [item.id]: e.target.value })}
-                        style={{ marginBottom: '5px', width: '100%' }}
-                      />
-                      <input
-                        type="file"
-                        onChange={(e) => handleDocumentUpload(item, docNames[item.id], e.target.files[0])}
-                      />
-                    </div>
-                  </td>
-                  {/* Столбец "Действия" (последний) */}
-                  <td>
-                    <button onClick={() => handleEditLocal(item)}>Редактировать</button>
-                    <button onClick={() => handleDelete(item.id)}>Удалить</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+  {filteredData.map((item) => (
+    <tr key={item.id} style={getRowStyle(item.status)}>
+      <td>{item.name}</td>
+      <td>{item.appearance}</td>
+      <td>{item.supplier}</td>
+      <td>{item.manufacturer}</td>
+      <td>{item.receipt_date ? new Date(item.receipt_date).toLocaleDateString() : '-'}</td>
+      <td>{item.check_date ? new Date(item.check_date).toLocaleDateString() : '-'}</td>
+      <td>{item.batch_number}</td>
+      <td>{item.manufacture_date ? new Date(item.manufacture_date).toLocaleDateString() : '-'}</td>
+      <td>{item.expiration_date}</td>
+      <td>{item.appearance_match}</td>
+      <td>{item.actual_mass}</td>
+      <td>{renderList(item.inspected_metrics)}</td>
+      <td>{renderList(item.investigation_result)}</td>
+      <td>{renderList(item.passport_standard)}</td>
+      <td>{item.full_name}</td>
+      {/* Столбец "Акт" */}
+      <td>
+        {item.act_link ? (
+          <button onClick={() => handleViewDocument(item.act_link)}>Просмотр</button>
+        ) : (
+          <button onClick={() => handleActClick(item)}>Создать акт</button>
+        )}
+      </td>
+      {/* Столбец "Наклейка" */}
+      <td>
+        <button onClick={() => handleLabelClick(item)}>Создать наклейку</button>
+      </td>
+      {/* Столбец "Комментарий" */}
+      <td>{item.comment}</td>
+      {/* Столбец "Статус" */}
+      <td>
+        <select
+          value={item.status || ''}
+          onChange={async (e) => {
+            const newStatus = e.target.value;
+            const { data: updatedData, error } = await supabase
+              .from(table)
+              .update({ status: newStatus })
+              .eq('id', item.id)
+              .select();
+            if (error) {
+              console.error("Ошибка обновления статуса:", error);
+              alert("Ошибка обновления статуса");
+            } else if (updatedData && updatedData.length > 0) {
+              onEdit(updatedData[0]);
+            }
+          }}
+        >
+          <option value="">--Выберите статус--</option>
+          <option value="Годное">Годное</option>
+          <option value="На карантине">На карантине</option>
+          <option value="На исследовании">На исследовании</option>
+          <option value="Брак">Брак</option>
+        </select>
+      </td>
+      {/* Столбец "Документы" */}
+      <td>
+        {item.documents && item.documents.length > 0 && item.documents.map((doc, index) => (
+          <div key={index} style={{ marginBottom: '5px', border: '1px solid #ccc', padding: '5px' }}>
+            <div>{doc.name}</div>
+            <button onClick={() => handleViewDocument(doc.link)}>Просмотр</button>
+            <button onClick={() => handleDocumentDelete(item, index)}>Удалить</button>
+          </div>
+        ))}
+        <div style={{ marginTop: '10px' }}>
+          <input
+            type="text"
+            placeholder="Название документа"
+            value={docNames[item.id] || ''}
+            onChange={(e) => setDocNames({ ...docNames, [item.id]: e.target.value })} 
+            style={{ marginBottom: '5px', width: '100%' }}
+          />
+          <input
+            type="file"
+            onChange={(e) => handleDocumentUpload(item, docNames[item.id], e.target.files[0])}
+          />
+        </div>
+      </td>
+      {/* Столбец "Действия" */}
+      <td>
+        <button onClick={() => handleEditLocal(item)}>Редактировать</button>
+        <button onClick={() => handleDelete(item.id)}>Удалить</button>
+      </td>
+    </tr>
+  ))}
+</tbody>
+
+
+
           </table>
         </div>
       )}
