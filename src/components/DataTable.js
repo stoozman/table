@@ -350,22 +350,19 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
       </div>
 
       {isSearchVisible && (
-        <div>
-          <SearchControls
-            searchParams={searchParams}
-            handleSearchChange={handleSearchChange}
-          />
-          <div style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            margin: '10px 0'
-          }}>
-            <button onClick={resetFilters} className="reset-filters-button">
-              Сбросить фильтры
-            </button>
-          </div>
-        </div>
-      )}
+  <div>
+    <SearchControls
+      searchParams={searchParams}
+      handleSearchChange={handleSearchChange}
+      isVisible={isSearchVisible}
+    />
+    <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '10px 0' }}>
+      <button onClick={resetFilters} className="reset-filters-button">
+        Сбросить фильтры
+      </button>
+    </div>
+  </div>
+)}
 
       {isTableVisible && (
         <div className="table-wrapper">
