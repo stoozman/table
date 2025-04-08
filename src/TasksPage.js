@@ -58,7 +58,7 @@ function TasksPage() {
   const transferUnfinishedTasks = async () => {
     try {
       const yesterday = getYesterdayDate(selectedDate);
-      
+
       const { data: unfinishedTasks, error } = await supabase
         .from('tasks')
         .select('*')
@@ -68,17 +68,24 @@ function TasksPage() {
       if (error) throw error;
 
       if (unfinishedTasks?.length > 0) {
+        console.log('Незавершенные задачи для переноса:', unfinishedTasks);
+
         await supabase.from('task_archive').insert(unfinishedTasks);
-        
+
         const updates = unfinishedTasks.map(task => {
           if (task.repeat_type !== 'none') {
             const nextDue = getNextDueDate(task);
+            console.log(`Обновление даты для задачи ${task.id}: ${nextDue}`);
             return supabase
               .from('tasks')
               .update({ next_due_date: nextDue })
               .eq('id', task.id);
           }
-          return supabase.from('tasks').delete().eq('id', task.id);
+          console.log(`Обновление задачи ${task.id}, так как она не повторяется.`);
+          return supabase
+            .from('tasks')
+            .update({ next_due_date: selectedDate.toISOString().split('T')[0] })
+            .eq('id', task.id);
         });
 
         await Promise.all(updates);
