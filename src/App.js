@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Route, Routes, Link, Navigate } from 'react-ro
 import * as XLSX from 'xlsx';
 import DataTable from './components/DataTable';
 import TasksPage from './TasksPage';
+import RawMaterialPage from './RawMaterialPage'; // Импорт новой страницы
 
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
@@ -159,35 +160,14 @@ function App() {
                     <Link to="/tasks">
                         <button>Задачи</button>
                     </Link>
+                    <Link to="/raw-materials">
+                        <button>Приход сырья</button>
+                    </Link>
                 </div>
 
                 <Routes>
                     <Route path="/" element={<Navigate to="/tasks" replace />} />
-                    <Route path="/raw-materials" element={(
-                        <>
-                            <button onClick={() => switchTable('raw_materials')}>Raw Materials</button>
-                            <div style={{ margin: '20px 0' }}>
-                                <input
-                                    type="file"
-                                    accept=".xlsx, .xls"
-                                    onChange={handleFileUpload}
-                                    style={{ display: 'none' }}
-                                    id="fileInput"
-                                />
-                                <label htmlFor="fileInput" style={{ cursor: 'pointer', padding: '10px', backgroundColor: '#007bff', color: 'white', borderRadius: '5px' }}>
-                                    Загрузить данные из Excel
-                                </label>
-                            </div>
-                            <DataTable 
-                                data={data} 
-                                table={table} 
-                                onAdd={addData} 
-                                onEdit={editData} 
-                                onDelete={deleteData} 
-                                supabase={supabase} 
-                            />
-                        </>
-                    )} />
+                    <Route path="/raw-materials" element={<RawMaterialPage />} />
                     <Route path="/finished-products" element={(
                         <>
                             <button onClick={() => switchTable('finished_products')}>Finished Products</button>
