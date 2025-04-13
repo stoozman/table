@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import DataForm from './DataForm';
 import { 
@@ -11,7 +11,8 @@ import { generateLabelDocument } from '../utils/labelGenerator';
 import useTableSearch from '../hooks/useTableSearch';
 import SearchControls from './SearchControls';
 
-function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
+function DataTable({ data: initialData, table, onAdd, onEdit, onDelete, supabase }) {
+  const [localData, setLocalData] = useState(initialData);
   const [documentLinks, setDocumentLinks] = useState({});
   const [labelLinks, setLabelLinks] = useState({});
   const [isTableVisible, setIsTableVisible] = useState(true);
@@ -20,7 +21,29 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   // Состояние для хранения введённых названий документов по id элемента
   const [docNames, setDocNames] = useState({});
 
-  const { searchParams, filteredData, handleSearchChange } = useTableSearch(data);
+  useEffect(() => {
+    setLocalData(initialData);
+  }, [initialData]);
+
+  useEffect(() => {
+    const fetchLatestData = async () => {
+      const { data: fetchedData, error } = await supabase
+        .from(table)
+        .select('*')
+        .order('id', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching latest data:', error);
+      } else {
+        setLocalData(fetchedData || []);
+      }
+    };
+
+    const interval = setInterval(fetchLatestData, 5000);
+    return () => clearInterval(interval);
+  }, [table, supabase]);
+
+  const { searchParams, filteredData, handleSearchChange } = useTableSearch(localData);
 
   // Функция для динамического изменения цвета строки по статусу
   const getRowStyle = (status) => {

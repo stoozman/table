@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import DatePicker from 'react-datepicker';
+import update from 'immutability-helper';
 import 'react-datepicker/dist/react-datepicker.css';
 
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
@@ -25,6 +26,7 @@ function RawMaterialPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [newMaterial, setNewMaterial] = useState({
     product_name: '',
+    batch_number: '',  // Добавляем поле для номера партии
     comment: '',
     completed: false,
     is_important: false,
@@ -81,7 +83,7 @@ function RawMaterialPage() {
               .update({ next_due_date: nextDue })
               .eq('id', material.id);
           }
-          console.log(`Обновление материала ${material.id}, так как он не повторяется.`);
+          console.log(`Обновление материала ${material.id}, так как он не повторяется`);
           return supabase
             .from('raw_material_tasks')
             .update({ next_due_date: selectedDate.toISOString().split('T')[0] })
@@ -166,27 +168,54 @@ function RawMaterialPage() {
   const addMaterial = async () => {
     try {
       if (!newMaterial.product_name.trim()) {
-        alert('Введите название материала');
+        alert('Введите название сырья');
         return;
       }
 
-      const materialToAdd = {
-        ...newMaterial,
+      if (!newMaterial.batch_number.trim()) {
+        alert('Введите номер партии');
+        return;
+      }
+
+      // Создаем запись в таблице raw_materials
+      const rawMaterialData = {
+        name: newMaterial.product_name,
+        batch_number: newMaterial.batch_number,
+        receipt_date: selectedDate.toISOString().split('T')[0],
+        status: 'На исследовании'  // Оставляем только обязательный статус
+      };
+
+      const { data: insertedRawMaterial, error: rawMaterialError } = await supabase
+        .from('raw_materials')
+        .insert([rawMaterialData])
+        .select();
+
+      if (rawMaterialError) throw rawMaterialError;
+
+      // Создаем запись в таблице raw_material_tasks
+      const materialTaskToAdd = {
+        product_name: newMaterial.product_name,
+        comment: `Партия: ${newMaterial.batch_number}${newMaterial.comment ? '\n' + newMaterial.comment : ''}`,
         date: selectedDate.toISOString().split('T')[0],
         next_due_date: newMaterial.next_due_date
           ? new Date(newMaterial.next_due_date).toISOString().split('T')[0]
           : selectedDate.toISOString().split('T')[0],
-        priority: materials.length + 1
+        priority: materials.length + 1,
+        completed: false,
+        is_important: newMaterial.is_important,
+        repeat_type: newMaterial.repeat_type,
+        repeat_config: newMaterial.repeat_config
       };
 
-      const { error } = await supabase
+      const { error: taskError } = await supabase
         .from('raw_material_tasks')
-        .insert([materialToAdd]);
+        .insert([materialTaskToAdd]);
 
-      if (error) throw error;
+      if (taskError) throw taskError;
 
       setNewMaterial({
         product_name: '',
+        batch_number: '',  // Добавляем поле для номера партии
         comment: '',
         completed: false,
         is_important: false,
@@ -197,7 +226,7 @@ function RawMaterialPage() {
 
       await fetchMaterials(selectedDate);
     } catch (error) {
-      console.error('Ошибка добавления материала:', error);
+      console.error('Ошибка добавления сырья:', error);
       alert(`Ошибка: ${error.message}`);
     }
   };
@@ -389,13 +418,22 @@ const AddMaterialForm = ({ newMaterial, setNewMaterial, addMaterial }) => {
 
   return (
     <div className="add-material-form">
-      <div className="basic-fields">
+      <div className="basic-fields" style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
         <input
           type="text"
           placeholder="Название сырья"
           value={newMaterial.product_name}
           onChange={e => setNewMaterial({...newMaterial, product_name: e.target.value})}
           className="material-input"
+          style={{ flex: 1 }}
+        />
+        <input
+          type="text"
+          placeholder="Номер партии"
+          value={newMaterial.batch_number}
+          onChange={e => setNewMaterial({...newMaterial, batch_number: e.target.value})}
+          className="material-input"
+          style={{ flex: 1 }}
         />
         <button 
           onClick={() => setShowAdvanced(!showAdvanced)}

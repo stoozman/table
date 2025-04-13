@@ -30,21 +30,16 @@ function DataForm({ onAdd, onEdit, editingItem }) {
   useEffect(() => {
     if (editingItem) {
       setFormData({
-        name: editingItem.name || '',
-        appearance: editingItem.appearance || '',
-        supplier: editingItem.supplier || '',
-        manufacturer: editingItem.manufacturer || '',
-        receipt_date: editingItem.receipt_date || '',
-        batch_number: editingItem.batch_number || '',
-        manufacture_date: editingItem.manufacture_date || '',
-        expiration_date: editingItem.expiration_date || '',
-        appearance_match: editingItem.appearance_match || '',
-        actual_mass: editingItem.actual_mass || '',
-        inspected_metrics: editingItem.inspected_metrics || [],
-        investigation_result: editingItem.investigation_result || [],
-        passport_standard: editingItem.passport_standard || [],
-        full_name: editingItem.full_name || '',
-        comment: editingItem.comment || ''
+        ...editingItem,
+        inspected_metrics: Array.isArray(editingItem.inspected_metrics) 
+          ? editingItem.inspected_metrics 
+          : editingItem.inspected_metrics ? [editingItem.inspected_metrics] : [],
+        investigation_result: Array.isArray(editingItem.investigation_result) 
+          ? editingItem.investigation_result 
+          : editingItem.investigation_result ? [editingItem.investigation_result] : [],
+        passport_standard: Array.isArray(editingItem.passport_standard) 
+          ? editingItem.passport_standard 
+          : editingItem.passport_standard ? [editingItem.passport_standard] : []
       });
     }
   }, [editingItem]);
