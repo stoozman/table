@@ -4,7 +4,8 @@ import { BrowserRouter as Router, Route, Routes, Link, Navigate, useLocation } f
 import * as XLSX from 'xlsx';
 import DataTable from './components/DataTable';
 import TasksPage from './TasksPage';
-import RawMaterialPage from './RawMaterialPage'; // Импорт новой страницы
+import RawMaterialPage from './RawMaterialPage';
+import SamplesTable from './SamplesTable'; 
 
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
@@ -20,6 +21,8 @@ function AppContent() {
             setTable('raw_materials');
         } else if (location.pathname === '/finished-products') {
             setTable('finished_products');
+        } else if (location.pathname === '/samples-table') {
+            setTable('samples');
         }
     }, [location.pathname]);
 
@@ -178,6 +181,9 @@ function AppContent() {
                 <Link to="/raw-materials">
                     <button>Приход сырья</button>
                 </Link>
+                <Link to="/samples-table">
+  <button>Таблица образцов</button>
+</Link>
             </div>
 
             <Routes>
@@ -228,6 +234,30 @@ function AppContent() {
                     />
                 </>} />
                 <Route path="/tasks" element={<TasksPage />} />
+                <Route path="/samples-table" element={
+  <>
+    <div style={{ margin: '20px 0' }}>
+      <input
+        type="file"
+        accept=".xlsx, .xls"
+        onChange={handleFileUpload}
+        style={{ display: 'none' }}
+        id="fileInput"
+      />
+      <label htmlFor="fileInput" style={{ cursor: 'pointer', padding: '10px', backgroundColor: '#007bff', color: 'white', borderRadius: '5px' }}>
+        Загрузить данные из Excel
+      </label>
+    </div>
+    <DataTable 
+      data={data} 
+      table="samples"
+      onAdd={addData} 
+      onEdit={editData} 
+      onDelete={deleteData} 
+      supabase={supabase} 
+    />
+  </>
+} />
             </Routes>
         </div>
     );
