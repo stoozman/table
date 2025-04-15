@@ -3,15 +3,40 @@ table {
     width: 100%;
     border-collapse: collapse;
     border-spacing: 0;
+    background: #fff;
+    font-size: 15px;
 }
 
 th, td {
     padding: 8px;
-    border: 1px solid #ddd;
+    border: 1px solid #bbb;
+    text-align: left;
 }
 
 th {
-    background-color: #f2f2f2;
+    background-color: #e2e6ea;
+    font-weight: 600;
+}
+
+tr:nth-child(even) td {
+    background-color: #f8f9fa;
+}
+
+tr:nth-child(odd) td {
+    background-color: #fff;
+}
+
+tr:hover td {
+    background-color: #e6f7ff;
+}
+
+.status-colored-row td {
+    /* Убираем фон зебры и hover, оставляем только inline-цвет */
+    background-color: inherit !important;
+}
+
+.status-colored-row:hover td {
+    background-color: inherit !important;
 }
 
 /* Стиль для скрытия колонки на мобильных устройствах */

@@ -113,24 +113,6 @@ function SamplesTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
       width: 100,
     },
     {
-      title: 'ФИО',
-      dataIndex: 'full_name',
-      key: 'full_name',
-      width: 100,
-    },
-    {
-      title: 'Акт',
-      dataIndex: 'act',
-      key: 'act',
-      width: 100,
-    },
-    {
-      title: 'Наклейка',
-      dataIndex: 'label',
-      key: 'label',
-      width: 100,
-    },
-    {
       title: 'Комментарий',
       dataIndex: 'comment',
       key: 'comment',
@@ -150,7 +132,7 @@ function SamplesTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
             Редактировать
           </Button>
           <Button
-            type="danger"
+            danger
             icon={<DeleteOutlined />}
             onClick={() => handleDelete(record.id)}
           >
@@ -375,27 +357,6 @@ function SamplesTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
       </Form.Item>
 
       <Form.Item
-        name="full_name"
-        label="ФИО"
-      >
-        <Input />
-      </Form.Item>
-
-      <Form.Item
-        name="act"
-        label="Акт"
-      >
-        <Input />
-      </Form.Item>
-
-      <Form.Item
-        name="label"
-        label="Наклейка"
-      >
-        <Input />
-      </Form.Item>
-
-      <Form.Item
         name="comment"
         label="Комментарий"
       >
@@ -422,44 +383,79 @@ function SamplesTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
         >
           <Button icon={<UploadOutlined />}>Загрузить документы</Button>
         </Upload>
+      </Form.Item>
+
+      <Form.Item>
+        <Button type="primary" htmlType="submit">
+          Сохранить
+        </Button>
+        <Button onClick={handleCancel} style={{ marginLeft: 8 }}>
+          Отмена
+        </Button>
+      </Form.Item>
+    </Form>
+  );
+
+  return (
+    <div>
+      <Button type="primary" onClick={handleAdd} style={{ marginBottom: 16 }}>
+        <PlusOutlined /> Добавить образец
+      </Button>
+
+      <Form layout="inline" style={{ marginBottom: 16 }}>
+        <Form.Item name="name" label="Поиск по наименованию">
+          <Input
+            placeholder="Поиск по наименованию"
+            value={searchParams?.name || ''}
+            onChange={handleSearchChange}
+            allowClear
+          />
         </Form.Item>
+        <Form.Item name="supplier" label="Поиск по поставщику">
+          <Input
+            placeholder="Поиск по поставщику"
+            value={searchParams?.supplier || ''}
+            onChange={handleSearchChange}
+            allowClear
+          />
+        </Form.Item>
+        <Form.Item name="manufacturer" label="Поиск по производителю">
+          <Input
+            placeholder="Поиск по производителю"
+            value={searchParams?.manufacturer || ''}
+            onChange={handleSearchChange}
+            allowClear
+          />
+        </Form.Item>
+        <Form.Item name="investigation_result" label="Поиск по результату исследования">
+          <Input
+            placeholder="Поиск по результату исследования"
+            value={searchParams?.investigation_result || ''}
+            onChange={handleSearchChange}
+            allowClear
+          />
+        </Form.Item>
+      </Form>
 
-<Form.Item>
-  <Button type="primary" htmlType="submit">
-    Сохранить
-  </Button>
-  <Button onClick={handleCancel} style={{ marginLeft: 8 }}>
-    Отмена
-  </Button>
-</Form.Item>
-</Form>
-);
+      <Modal
+        title={editingRecord ? 'Редактировать образец' : 'Добавить образец'}
+        visible={isModalVisible}
+        onOk={handleOk}
+        onCancel={handleCancel}
+        width={800}
+      >
+        {renderForm()}
+      </Modal>
 
-return (
-<div>
-<Button type="primary" onClick={handleAdd} style={{ marginBottom: 16 }}>
-  <PlusOutlined /> Добавить образец
-</Button>
-
-<Modal
-  title={editingRecord ? 'Редактировать образец' : 'Добавить образец'}
-  visible={isModalVisible}
-  onOk={handleOk}
-  onCancel={handleCancel}
-  width={800}
->
-  {renderForm()}
-</Modal>
-
-<Table
-  columns={columns}
-  dataSource={data}
-  bordered
-  pagination={{ pageSize: 10 }}
-  rowKey="id"
-/>
-</div>
-);
+      <Table
+        columns={columns}
+        dataSource={data}
+        bordered
+        pagination={{ pageSize: 10 }}
+        rowKey="id"
+      />
+    </div>
+  );
 }
 
 export default SamplesTable;

@@ -10,6 +10,7 @@ import {
 import { generateLabelDocument } from '../utils/labelGenerator';
 import useTableSearch from '../hooks/useTableSearch';
 import SearchControls from './SearchControls';
+import './DataTable.css';
 
 function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   const [documentLinks, setDocumentLinks] = useState({});
@@ -96,7 +97,14 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
 
   // Экспорт данных в Excel (без изменений)
   const exportToExcel = () => {
-    const headers = [
+    const isSamples = table === 'samples' || table === 'samples-table';
+    const headers = isSamples ? [
+      'Наименование', 'Внешний вид', 'Поставщик', 'Производитель',
+      'Дата поступления', 'Дата проверки', 'Номер партии',
+      'Дата изготовления', 'Срок годности', 'Соответствие внешнего вида',
+      'Фактическая масса', 'Проверяемые показатели', 'Результат исследования',
+      'Норматив по паспорту', 'Комментарий'
+    ] : [
       'Наименование', 'Внешний вид', 'Поставщик', 'Производитель',
       'Дата поступления', 'Дата проверки', 'Номер партии',
       'Дата изготовления', 'Срок годности', 'Соответствие внешнего вида',
@@ -106,7 +114,23 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
 
     const wsData = [
       headers,
-      ...filteredData.map(item => [
+      ...filteredData.map(item => isSamples ? [
+        item.name || '',
+        item.appearance || '',
+        item.supplier || '',
+        item.manufacturer || '',
+        item.receipt_date ? new Date(item.receipt_date).toLocaleDateString() : '',
+        item.check_date ? new Date(item.check_date).toLocaleDateString() : '',
+        item.batch_number || '',
+        item.manufacture_date ? new Date(item.manufacture_date).toLocaleDateString() : '',
+        item.expiration_date || '',
+        item.appearance_match || '',
+        item.actual_mass || '',
+        item.inspected_metrics || '',
+        item.investigation_result || '',
+        item.passport_standard || '',
+        item.comment || ''
+      ] : [
         item.name || '',
         item.appearance || '',
         item.supplier || '',
@@ -129,7 +153,7 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     const ws = XLSX.utils.aoa_to_sheet(wsData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Данные');
-    XLSX.writeFile(wb, `${table === 'raw_materials' ? 'Сырьё' : 'Продукция'}.xlsx`);
+    XLSX.writeFile(wb, `${table === 'raw_materials' ? 'Сырьё' : table === 'finished_products' ? 'Продукция' : 'Образцы'}.xlsx`);
   };
 
   // Создание акта (функция без изменений)
@@ -244,10 +268,10 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     }
   };
 
-  // Функция загрузки документа (для нового столбца "Документы")
+  // Функция загрузки документов (для нового столбца "Документы")
   const handleDocumentUpload = async (item, customName, file) => {
     if (!file || !customName) {
-      alert("Введите название документа и выберите файл");
+      alert("Введите название документов и выберите файл");
       return;
     }
     try {
@@ -280,18 +304,18 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
         }
       }
     } catch (error) {
-      console.error("Ошибка загрузки документа:", error);
-      alert("Ошибка загрузки документа");
+      console.error("Ошибка загрузки документов:", error);
+      alert("Ошибка загрузки документов");
     }
   };
 
-  // Функция удаления документа из нового столбца "Документы"
+  // Функция удаления документов из нового столбца "Документы"
   const handleDocumentDelete = async (item, index) => {
     try {
       const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
       const docToDelete = item.documents[index];
       if (!docToDelete || !docToDelete.fileName) {
-        alert("Нет информации для удаления документа");
+        alert("Нет информации для удаления документов");
         return;
       }
       const filePath = `documents/${docToDelete.fileName}`;
@@ -312,12 +336,12 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
         onEdit(updatedData[0]);
       }
     } catch (error) {
-      console.error("Ошибка удаления документа:", error);
-      alert("Ошибка удаления документа");
+      console.error("Ошибка удаления документов:", error);
+      alert("Ошибка удаления документов");
     }
   };
 
-  // Функция просмотра документа (открывает ссылку в новом окне)
+  // Функция просмотра документов (открывает ссылку в новом окне)
   const handleViewDocument = (link) => {
     if (link && link.startsWith('http')) {
       window.open(link, '_blank', 'noopener,noreferrer');
@@ -326,25 +350,44 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     }
   };
 
-  // Управление интерфейсом (без изменений)
-  const toggleTableVisibility = () => setIsTableVisible(!isTableVisible);
-  const toggleSearchVisibility = () => setIsSearchVisible(!isSearchVisible);
-  const handleEditLocal = (item) => setEditingItem(item);
-  const handleDelete = (id) => onDelete(id);
+  // Универсальная ячейка для документов (всегда с формой добавления)
+  function renderDocumentsCell(item) {
+    return (
+      <div style={{ minWidth: 260, maxWidth: 350 }}>
+        {(item.documents && item.documents.length > 0) && item.documents.map((doc, index) => (
+          <div key={index} style={{ marginBottom: '5px', border: '1px solid #ccc', padding: '5px' }}>
+            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.name}</div>
+            <button onClick={() => handleViewDocument(doc.link)}>Просмотр</button>
+            <button onClick={() => handleDocumentDelete(item, index)}>Удалить</button>
+          </div>
+        ))}
+        <div style={{ marginTop: '10px', display: 'flex', gap: 4, flexDirection: 'column', minWidth: 220, maxWidth: 320 }}>
+          <input
+            type="text"
+            placeholder="Название документа"
+            value={docNames[item.id] || ''}
+            onChange={(e) => setDocNames({ ...docNames, [item.id]: e.target.value })}
+            style={{ marginBottom: '5px', width: '100%' }}
+          />
+          <input
+            type="file"
+            onChange={(e) => handleDocumentUpload(item, docNames[item.id], e.target.files[0])}
+            style={{ width: '100%' }}
+          />
+        </div>
+      </div>
+    );
+  }
 
-  // Сброс фильтров
-  const resetFilters = () => {
-    Object.keys(searchParams).forEach(key => {
-      handleSearchChange({ target: { name: key, value: '' } });
-    });
-  };
-
-  // Мемоизированная строка таблицы
+  // --- Мемоизированная строка таблицы для сырья и продукции (TableRow) ---
   const TableRow = React.memo(function TableRow({ item, getRowStyle, supabase, table, onEdit, handleViewDocument, handleActClick, handleLabelClick, handleDocumentDelete, handleDocumentUpload, handleEditLocal, handleDelete, docNames, setDocNames, renderList }) {
+    const rowStyle = getRowStyle(item.status);
+    const hasStatusColor = rowStyle && rowStyle.backgroundColor;
     return (
       <tr
         key={item.id}
-        style={getRowStyle(item.status)}
+        className={hasStatusColor ? 'status-colored-row' : ''}
+        style={rowStyle}
       >
         <td>{item.name}</td>
         <td>{item.appearance}</td>
@@ -361,6 +404,7 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
         <td>{renderList(item.investigation_result)}</td>
         <td>{renderList(item.passport_standard)}</td>
         <td>{item.full_name}</td>
+        <td>{item.comment}</td>
         {/* Столбец "Акт" */}
         <td>
           {item.act_link ? (
@@ -373,8 +417,6 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
         <td>
           <button onClick={() => handleLabelClick(item)}>Создать наклейку</button>
         </td>
-        {/* Столбец "Комментарий" */}
-        <td>{item.comment}</td>
         {/* Столбец "Статус" */}
         <td>
           <select
@@ -402,28 +444,7 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
           </select>
         </td>
         {/* Столбец "Документы" */}
-        <td>
-          {item.documents && item.documents.length > 0 && item.documents.map((doc, index) => (
-            <div key={index} style={{ marginBottom: '5px', border: '1px solid #ccc', padding: '5px' }}>
-              <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.name}</div>
-              <button onClick={() => handleViewDocument(doc.link)}>Просмотр</button>
-              <button onClick={() => handleDocumentDelete(item, index)}>Удалить</button>
-            </div>
-          ))}
-          <div style={{ marginTop: '10px' }}>
-            <input
-              type="text"
-              placeholder="Название документа"
-              value={docNames[item.id] || ''}
-              onChange={(e) => setDocNames({ ...docNames, [item.id]: e.target.value })}
-              style={{ marginBottom: '5px', width: '100%' }}
-            />
-            <input
-              type="file"
-              onChange={(e) => handleDocumentUpload(item, docNames[item.id], e.target.files[0])}
-            />
-          </div>
-        </td>
+        <td>{renderDocumentsCell(item)}</td>
         {/* Столбец "Действия" */}
         <td>
           <button onClick={() => handleEditLocal(item)}>Редактировать</button>
@@ -433,12 +454,127 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     );
   });
 
-  // memoFilteredData теперь = filteredData
-  const memoFilteredData = filteredData;
+  // Функция для отображения действий (без изменений)
+  function renderActions(item) {
+    return (
+      <div>
+        <button onClick={() => handleEditLocal(item)}>Редактировать</button>
+        <button onClick={() => handleDelete(item.id)}>Удалить</button>
+        <button onClick={() => handleActClick(item)}>Создать акт</button>
+        <button onClick={() => handleLabelClick(item)}>Создать этикетку</button>
+        {item.act_link && (
+          <button onClick={() => handleViewDocument(item.act_link)}>Просмотр акта</button>
+        )}
+        {item.act_link && (
+          <button onClick={() => handleActDelete(item)}>Удалить акт</button>
+        )}
+      </div>
+    );
+  }
+
+  // Управление интерфейсом (без изменений)
+  const toggleTableVisibility = () => setIsTableVisible(!isTableVisible);
+  const toggleSearchVisibility = () => setIsSearchVisible(!isSearchVisible);
+  const handleEditLocal = (item) => setEditingItem(item);
+  const handleDelete = (id) => onDelete(id);
+
+  // Сброс фильтров
+  const resetFilters = () => {
+    Object.keys(searchParams).forEach(key => {
+      handleSearchChange({ target: { name: key, value: '' } });
+    });
+  };
+
+  // Определяем набор столбцов и фильтров по типу таблицы
+  const isSamples = table === 'samples' || table === 'samples-table';
+
+  // Столбцы для samples (образцы)
+  const samplesColumns = [
+    'Наименование', 'Внешний вид', 'Поставщик', 'Производитель',
+    'Дата поступления', 'Дата проверки', 'Номер партии',
+    'Дата изготовления', 'Срок годности', 'Соответствие внешнего вида',
+    'Фактическая масса', 'Проверяемые показатели', 'Результат исследования',
+    'Норматив по паспорту', 'Комментарий', 'Документы', 'Действия'
+  ];
+  // Полный набор столбцов (сырье, продукция)
+  const fullColumns = [
+    'Наименование', 'Внешний вид', 'Поставщик', 'Производитель',
+    'Дата поступления', 'Дата проверки', 'Номер партии',
+    'Дата изготовления', 'Срок годности', 'Соответствие внешнего вида',
+    'Фактическая масса', 'Проверяемые показатели', 'Результат исследования',
+    'Норматив по паспорту', 'ФИО', 'Комментарий', 'Акт', 'Наклейка', 'Статус', 'Документы', 'Действия'
+  ];
+
+  // Фильтры для samples
+  const samplesFilters = (
+    <div className="search-controls">
+      <input type="text" placeholder="Поиск по наименованию" name="name" value={searchParams.name || ''} onChange={handleSearchChange} />
+      <input type="text" placeholder="Поиск по поставщику" name="supplier" value={searchParams.supplier || ''} onChange={handleSearchChange} />
+      <input type="text" placeholder="Поиск по производителю" name="manufacturer" value={searchParams.manufacturer || ''} onChange={handleSearchChange} />
+      <input type="text" placeholder="Поиск по результату исследования" name="investigation_result" value={searchParams.investigation_result || ''} onChange={handleSearchChange} />
+    </div>
+  );
+
+  // Фильтры для остальных таблиц
+  const fullFilters = (
+    <SearchControls searchParams={searchParams} handleSearchChange={handleSearchChange} isVisible={isSearchVisible} />
+  );
+
+  // Рендер строк
+  const renderRows = filteredData.map((item, idx) => {
+    if (isSamples) {
+      return (
+        <tr key={item.id || idx} style={getRowStyle(item.status)}>
+          <td>{item.name}</td>
+          <td>{item.appearance}</td>
+          <td>{item.supplier}</td>
+          <td>{item.manufacturer}</td>
+          <td>{item.receipt_date ? new Date(item.receipt_date).toLocaleDateString() : ''}</td>
+          <td>{item.check_date ? new Date(item.check_date).toLocaleDateString() : ''}</td>
+          <td>{item.batch_number}</td>
+          <td>{item.manufacture_date ? new Date(item.manufacture_date).toLocaleDateString() : ''}</td>
+          <td>{item.expiration_date}</td>
+          <td>{item.appearance_match}</td>
+          <td>{item.actual_mass}</td>
+          <td>{item.inspected_metrics}</td>
+          <td>{item.investigation_result}</td>
+          <td>{item.passport_standard}</td>
+          <td>{item.comment}</td>
+          <td>{renderDocumentsCell(item)}</td>
+          <td>{renderActions(item)}</td>
+        </tr>
+      );
+    } else {
+      // Обычный (сырье, продукция) — старый рендер
+      return (
+        <TableRow
+          key={item.id || idx}
+          item={item}
+          getRowStyle={getRowStyle}
+          supabase={supabase}
+          table={table}
+          onEdit={onEdit}
+          handleViewDocument={handleViewDocument}
+          handleActClick={handleActClick}
+          handleLabelClick={handleLabelClick}
+          handleDocumentDelete={handleDocumentDelete}
+          handleDocumentUpload={handleDocumentUpload}
+          handleEditLocal={handleEditLocal}
+          handleDelete={handleDelete}
+          docNames={docNames}
+          setDocNames={setDocNames}
+          renderList={renderList}
+        />
+      );
+    }
+  });
+
+  // Рендер таблицы
+  const columnsToRender = isSamples ? samplesColumns : fullColumns;
 
   return (
     <div className="table-container">
-      <h2>{table === 'raw_materials' ? 'Сырье' : 'Готовая продукция'}</h2>
+      <h2>{table === 'raw_materials' ? 'Сырье' : table === 'finished_products' ? 'Продукция' : 'Образцы'}</h2>
 
       <div className="controls" style={{
         display: 'flex',
@@ -461,11 +597,7 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
 
       {isSearchVisible && (
         <div>
-          <SearchControls
-            searchParams={searchParams}
-            handleSearchChange={handleSearchChange}
-            isVisible={isSearchVisible}
-          />
+          {isSamples ? samplesFilters : fullFilters}
           <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '10px 0' }}>
             <button onClick={resetFilters} className="reset-filters-button">
               Сбросить фильтры
@@ -479,49 +611,13 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
           <table>
             <thead>
               <tr>
-                <th>Наименование</th>
-                <th>Внешний вид</th>
-                <th>Поставщик</th>
-                <th>Производитель</th>
-                <th>Дата поступления</th>
-                <th>Дата проверки</th>
-                <th>Номер партии</th>
-                <th>Дата изготовления</th>
-                <th>Срок годности</th>
-                <th>Соответствие внешнего вида</th>
-                <th>Фактическая масса</th>
-                <th>Проверяемые показатели</th>
-                <th>Результат исследования</th>
-                <th>Норматив по паспорту</th>
-                <th>ФИО</th>
-                <th>Акт</th>
-                <th>Наклейка</th>
-                <th>Статус</th>
-                <th>Документы</th>
-                <th>Действия</th>
+                {columnsToRender.map((col, idx) => (
+                  <th key={idx}>{col}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {memoFilteredData.map((item) => (
-                <TableRow
-                  key={item.id}
-                  item={item}
-                  getRowStyle={getRowStyle}
-                  supabase={supabase}
-                  table={table}
-                  onEdit={onEdit}
-                  handleViewDocument={handleViewDocument}
-                  handleActClick={handleActClick}
-                  handleLabelClick={handleLabelClick}
-                  handleDocumentDelete={handleDocumentDelete}
-                  handleDocumentUpload={handleDocumentUpload}
-                  handleEditLocal={handleEditLocal}
-                  handleDelete={handleDelete}
-                  docNames={docNames}
-                  setDocNames={setDocNames}
-                  renderList={renderList}
-                />
-              ))}
+              {renderRows}
             </tbody>
           </table>
         </div>

@@ -39,8 +39,13 @@ function getRowStyle(status) {
 
 // Мемоизированная строка заказа
 const OrderRow = memo(function OrderRow({ order, onStatusChange, onQuickOrder }) {
+  const rowStyle = getRowStyle(order.status);
+  const hasStatusColor = rowStyle && (rowStyle.background || rowStyle.backgroundColor);
   return (
-    <tr style={getRowStyle(order.status)}>
+    <tr
+      className={hasStatusColor ? 'status-colored-row' : ''}
+      style={rowStyle}
+    >
       <td>{order.name}</td>
       <td>{order.link ? <a href={order.link} target="_blank" rel="noopener noreferrer">Ссылка</a> : '-'}</td>
       <td>{order.quantity}</td>
