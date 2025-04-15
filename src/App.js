@@ -5,7 +5,8 @@ import * as XLSX from 'xlsx';
 import DataTable from './components/DataTable';
 import TasksPage from './TasksPage';
 import RawMaterialPage from './RawMaterialPage';
-import SamplesTable from './SamplesTable'; 
+import SamplesTable from './SamplesTable';
+import OrdersPage from './OrdersPage';
 
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
@@ -184,6 +185,9 @@ function AppContent() {
                 <Link to="/samples-table">
   <button>Таблица образцов</button>
 </Link>
+                <Link to="/orders">
+                    <button>Заказы</button>
+                </Link>
             </div>
 
             <Routes>
@@ -258,6 +262,7 @@ function AppContent() {
     />
   </>
 } />
+                <Route path="/orders" element={<OrdersPage />} />
             </Routes>
         </div>
     );
