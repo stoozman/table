@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -26,7 +26,7 @@ function RawMaterialPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [newMaterial, setNewMaterial] = useState({
     product_name: '',
-    batch_number: '',  // Добавляем поле для номера партии
+    batch_number: '',
     comment: '',
     completed: false,
     is_important: false,
@@ -35,6 +35,10 @@ function RawMaterialPage() {
     next_due_date: null
   });
   const [showCompleted, setShowCompleted] = useState(true);
+  const [sortConfig, setSortConfig] = useState({
+    key: 'product_name',
+    direction: 'asc'
+  });
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -103,15 +107,26 @@ function RawMaterialPage() {
       const { data, error } = await supabase
         .from('raw_material_tasks')
         .select('*')
-        .eq('date', formattedDate)
-        .order('priority');
-
+        .eq('date', formattedDate);
+  
       if (error) throw error;
-      setMaterials(data || []);
+  
+      // Сортировка данных по алфавиту перед установкой состояния
+      const sortedMaterials = data.sort((a, b) => {
+        const nameCompare = a.product_name.localeCompare(b.product_name);
+        if (nameCompare !== 0) return nameCompare;
+        // Стабильная сортировка по id
+        return (a.id || 0) - (b.id || 0);
+      });
+
+      console.log('Sorted materials:', sortedMaterials); // Логирование для проверки
+  
+      setMaterials(sortedMaterials || []);
     } catch (error) {
       console.error('Ошибка загрузки материалов:', error);
     }
   };
+  
 
   const getNextDueDate = (material) => {
     const currentDate = new Date(material.next_due_date);
@@ -126,7 +141,7 @@ function RawMaterialPage() {
     }
   };
 
-  const handleCompleteMaterial = async (material) => {
+  const handleCompleteMaterial = useCallback(async (material) => {
     try {
       const { error: updateError } = await supabase
         .from('raw_material_tasks')
@@ -137,7 +152,7 @@ function RawMaterialPage() {
 
       if (material.repeat_type !== 'none' && !material.completed) {
         const nextDueDate = getNextDueDate(material);
-        await supabase.from('raw_material_tasks').insert([{ 
+        await supabase.from('raw_material_tasks').insert([{
           ...material,
           id: undefined,
           completed: false,
@@ -149,9 +164,9 @@ function RawMaterialPage() {
     } catch (error) {
       console.error('Ошибка выполнения материала:', error);
     }
-  };
+  }, [selectedDate]);
 
-  const updateMaterialComment = async (materialId, newComment) => {
+  const updateMaterialComment = useCallback(async (materialId, newComment) => {
     try {
       const { error } = await supabase
         .from('raw_material_tasks')
@@ -163,9 +178,9 @@ function RawMaterialPage() {
     } catch (error) {
       console.error('Ошибка обновления комментария:', error);
     }
-  };
+  }, [selectedDate]);
 
-  const addMaterial = async () => {
+  const addMaterial = useCallback(async () => {
     try {
       if (!newMaterial.product_name.trim()) {
         alert('Введите название сырья');
@@ -177,12 +192,11 @@ function RawMaterialPage() {
         return;
       }
 
-      // Создаем запись в таблице raw_materials
       const rawMaterialData = {
         name: newMaterial.product_name,
         batch_number: newMaterial.batch_number,
         receipt_date: selectedDate.toISOString().split('T')[0],
-        status: 'На исследовании'  // Оставляем только обязательный статус
+        status: 'На исследовании'
       };
 
       const { data: insertedRawMaterial, error: rawMaterialError } = await supabase
@@ -192,7 +206,6 @@ function RawMaterialPage() {
 
       if (rawMaterialError) throw rawMaterialError;
 
-      // Создаем запись в таблице raw_material_tasks
       const materialTaskToAdd = {
         product_name: newMaterial.product_name,
         comment: `Партия: ${newMaterial.batch_number}${newMaterial.comment ? '\n' + newMaterial.comment : ''}`,
@@ -215,7 +228,7 @@ function RawMaterialPage() {
 
       setNewMaterial({
         product_name: '',
-        batch_number: '',  // Добавляем поле для номера партии
+        batch_number: '',
         comment: '',
         completed: false,
         is_important: false,
@@ -229,32 +242,47 @@ function RawMaterialPage() {
       console.error('Ошибка добавления сырья:', error);
       alert(`Ошибка: ${error.message}`);
     }
-  };
+  }, [selectedDate, materials.length, newMaterial]);
 
-  const moveCardHandler = (dragIndex, hoverIndex) => {
+  const moveCardHandler = useCallback((dragIndex, hoverIndex) => {
     const draggedMaterial = materials[dragIndex];
     const updatedMaterials = update(materials, {
       $splice: [[dragIndex, 1], [hoverIndex, 0, draggedMaterial]]
     });
     setMaterials(updatedMaterials);
     updateMaterialOrder(updatedMaterials);
-  };
+  }, [materials]);
 
-  const updateMaterialOrder = async (updatedMaterials) => {
+  const updateMaterialOrder = useCallback(async (updatedMaterials) => {
     try {
-      const updates = updatedMaterials.map((material, index) => 
+      const updates = updatedMaterials.map((material, index) =>
         supabase
           .from('raw_material_tasks')
           .update({ priority: index + 1 })
           .eq('id', material.id)
       );
-      
+
       await Promise.all(updates);
       await fetchMaterials(selectedDate);
     } catch (error) {
       console.error('Ошибка обновления порядка:', error);
     }
-  };
+  }, [selectedDate]);
+
+  const handleSort = useCallback((key) => {
+    setSortConfig(prevConfig => {
+      if (prevConfig.key === key) {
+        return {
+          ...prevConfig,
+          direction: prevConfig.direction === 'asc' ? 'desc' : 'asc'
+        };
+      }
+      return {
+        key,
+        direction: 'asc'
+      };
+    });
+  }, []);
 
   return (
     <DndProvider backend={HTML5Backend}>
@@ -289,10 +317,17 @@ function RawMaterialPage() {
         <div className="tasks-list">
           {materials
             .filter(material => showCompleted || !material.completed)
+            .sort((a, b) => {
+              if (sortConfig.direction === 'asc') {
+                return a[sortConfig.key].localeCompare(b[sortConfig.key]);
+              } else {
+                return b[sortConfig.key].localeCompare(a[sortConfig.key]);
+              }
+            })
             .map((material, index) => (
-              <MaterialItem 
-                key={material.id} 
-                material={material} 
+              <MaterialItem
+                key={material.id}
+                material={material}
                 onComplete={handleCompleteMaterial}
                 onUpdateComment={updateMaterialComment}
                 moveCard={moveCardHandler}
@@ -301,7 +336,7 @@ function RawMaterialPage() {
             ))}
         </div>
 
-        <AddMaterialForm 
+        <AddMaterialForm
           newMaterial={newMaterial}
           setNewMaterial={setNewMaterial}
           addMaterial={addMaterial}
@@ -342,7 +377,7 @@ const MaterialItem = ({ material, onComplete, onUpdateComment, moveCard, index }
   };
 
   return (
-    <div 
+    <div
       ref={(node) => drag(drop(node))}
       className={`material-item ${isUrgent ? 'urgent' : ''} ${material.completed ? 'completed' : ''}`}
       style={{ opacity: isDragging ? 0.5 : 1 }}
@@ -360,7 +395,7 @@ const MaterialItem = ({ material, onComplete, onUpdateComment, moveCard, index }
               {material.product_name}
               {material.is_important && <span className="important-badge"> ★ Срочно</span>}
             </h3>
-            
+
             {editingComment ? (
               <div className="comment-editor">
                 <textarea
@@ -370,13 +405,13 @@ const MaterialItem = ({ material, onComplete, onUpdateComment, moveCard, index }
                   placeholder="Введите комментарий..."
                 />
                 <div className="comment-buttons">
-                  <button 
+                  <button
                     onClick={handleCommentSave}
                     className="save-button"
                   >
                     Сохранить
                   </button>
-                  <button 
+                  <button
                     onClick={() => {
                       setLocalComment(material.comment);
                       setEditingComment(false);
@@ -388,7 +423,7 @@ const MaterialItem = ({ material, onComplete, onUpdateComment, moveCard, index }
                 </div>
               </div>
             ) : (
-              <div 
+              <div
                 className="comment-display"
                 onClick={() => setEditingComment(true)}
               >
@@ -435,7 +470,7 @@ const AddMaterialForm = ({ newMaterial, setNewMaterial, addMaterial }) => {
           className="material-input"
           style={{ flex: 1 }}
         />
-        <button 
+        <button
           onClick={() => setShowAdvanced(!showAdvanced)}
           className="toggle-button"
         >
@@ -479,8 +514,8 @@ const AddMaterialForm = ({ newMaterial, setNewMaterial, addMaterial }) => {
                       checked={newMaterial.repeat_config?.days?.includes(i)}
                       onChange={e => {
                         const days = newMaterial.repeat_config?.days || [];
-                        const newDays = e.target.checked 
-                          ? [...days, i] 
+                        const newDays = e.target.checked
+                          ? [...days, i]
                           : days.filter(d => d !== i);
                         setNewMaterial({
                           ...newMaterial,
@@ -515,7 +550,7 @@ const AddMaterialForm = ({ newMaterial, setNewMaterial, addMaterial }) => {
         </div>
       )}
 
-      <button 
+      <button
         onClick={addMaterial}
         className="add-button"
       >

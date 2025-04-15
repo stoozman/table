@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import DataForm from './DataForm';
 import { 
@@ -11,8 +11,7 @@ import { generateLabelDocument } from '../utils/labelGenerator';
 import useTableSearch from '../hooks/useTableSearch';
 import SearchControls from './SearchControls';
 
-function DataTable({ data: initialData, table, onAdd, onEdit, onDelete, supabase }) {
-  const [localData, setLocalData] = useState(initialData);
+function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   const [documentLinks, setDocumentLinks] = useState({});
   const [labelLinks, setLabelLinks] = useState({});
   const [isTableVisible, setIsTableVisible] = useState(true);
@@ -21,29 +20,22 @@ function DataTable({ data: initialData, table, onAdd, onEdit, onDelete, supabase
   // Состояние для хранения введённых названий документов по id элемента
   const [docNames, setDocNames] = useState({});
 
-  useEffect(() => {
-    setLocalData(initialData);
-  }, [initialData]);
+  // СНАЧАЛА получаем filteredData!
+  const { searchParams, filteredData, handleSearchChange } = useTableSearch(data);
 
-  useEffect(() => {
-    const fetchLatestData = async () => {
-      const { data: fetchedData, error } = await supabase
-        .from(table)
-        .select('*')
-        .order('id', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching latest data:', error);
+  // deep equal для сравнения данных по id
+  function isRowEqual(a, b) {
+    if (!a || !b) return false;
+    const keys = Object.keys(a);
+    for (let key of keys) {
+      if (typeof a[key] === 'object' && typeof b[key] === 'object') {
+        if (JSON.stringify(a[key]) !== JSON.stringify(b[key])) return false;
       } else {
-        setLocalData(fetchedData || []);
+        if (a[key] !== b[key]) return false;
       }
-    };
-
-    const interval = setInterval(fetchLatestData, 5000);
-    return () => clearInterval(interval);
-  }, [table, supabase]);
-
-  const { searchParams, filteredData, handleSearchChange } = useTableSearch(localData);
+    }
+    return true;
+  }
 
   // Функция для динамического изменения цвета строки по статусу
   const getRowStyle = (status) => {
@@ -168,10 +160,8 @@ function DataTable({ data: initialData, table, onAdd, onEdit, onDelete, supabase
             .select();
 
           if (error) {
-            console.error('Ошибка обновления в Supabase:', error);
-            throw error;
-          }
-          if (updatedData && updatedData.length > 0) {
+            console.error('Error fetching latest data:', error);
+          } else {
             onEdit(updatedData[0]);
           }
           setDocumentLinks(prev => ({ ...prev, [item.id]: formattedLink }));
@@ -349,6 +339,103 @@ function DataTable({ data: initialData, table, onAdd, onEdit, onDelete, supabase
     });
   };
 
+  // Мемоизированная строка таблицы
+  const TableRow = React.memo(function TableRow({ item, getRowStyle, supabase, table, onEdit, handleViewDocument, handleActClick, handleLabelClick, handleDocumentDelete, handleDocumentUpload, handleEditLocal, handleDelete, docNames, setDocNames, renderList }) {
+    return (
+      <tr
+        key={item.id}
+        style={getRowStyle(item.status)}
+      >
+        <td>{item.name}</td>
+        <td>{item.appearance}</td>
+        <td>{item.supplier}</td>
+        <td>{item.manufacturer}</td>
+        <td>{item.receipt_date ? new Date(item.receipt_date).toLocaleDateString() : '-'}</td>
+        <td>{item.check_date ? new Date(item.check_date).toLocaleDateString() : '-'}</td>
+        <td>{item.batch_number}</td>
+        <td>{item.manufacture_date ? new Date(item.manufacture_date).toLocaleDateString() : '-'}</td>
+        <td>{item.expiration_date}</td>
+        <td>{item.appearance_match}</td>
+        <td>{item.actual_mass}</td>
+        <td>{renderList(item.inspected_metrics)}</td>
+        <td>{renderList(item.investigation_result)}</td>
+        <td>{renderList(item.passport_standard)}</td>
+        <td>{item.full_name}</td>
+        {/* Столбец "Акт" */}
+        <td>
+          {item.act_link ? (
+            <button onClick={() => handleViewDocument(item.act_link)}>Просмотр</button>
+          ) : (
+            <button onClick={() => handleActClick(item)}>Создать акт</button>
+          )}
+        </td>
+        {/* Столбец "Наклейка" */}
+        <td>
+          <button onClick={() => handleLabelClick(item)}>Создать наклейку</button>
+        </td>
+        {/* Столбец "Комментарий" */}
+        <td>{item.comment}</td>
+        {/* Столбец "Статус" */}
+        <td>
+          <select
+            value={item.status || ''}
+            onChange={async (e) => {
+              const newStatus = e.target.value;
+              const { data: updatedData, error } = await supabase
+                .from(table)
+                .update({ status: newStatus })
+                .eq('id', item.id)
+                .select();
+              if (error) {
+                console.error("Ошибка обновления статуса:", error);
+                alert("Ошибка обновления статуса");
+              } else if (updatedData && updatedData.length > 0) {
+                onEdit(updatedData[0]);
+              }
+            }}
+          >
+            <option value="">--Выберите статус--</option>
+            <option value="Годное">Годное</option>
+            <option value="На карантине">На карантине</option>
+            <option value="На исследовании">На исследовании</option>
+            <option value="Брак">Брак</option>
+          </select>
+        </td>
+        {/* Столбец "Документы" */}
+        <td>
+          {item.documents && item.documents.length > 0 && item.documents.map((doc, index) => (
+            <div key={index} style={{ marginBottom: '5px', border: '1px solid #ccc', padding: '5px' }}>
+              <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.name}</div>
+              <button onClick={() => handleViewDocument(doc.link)}>Просмотр</button>
+              <button onClick={() => handleDocumentDelete(item, index)}>Удалить</button>
+            </div>
+          ))}
+          <div style={{ marginTop: '10px' }}>
+            <input
+              type="text"
+              placeholder="Название документа"
+              value={docNames[item.id] || ''}
+              onChange={(e) => setDocNames({ ...docNames, [item.id]: e.target.value })}
+              style={{ marginBottom: '5px', width: '100%' }}
+            />
+            <input
+              type="file"
+              onChange={(e) => handleDocumentUpload(item, docNames[item.id], e.target.files[0])}
+            />
+          </div>
+        </td>
+        {/* Столбец "Действия" */}
+        <td>
+          <button onClick={() => handleEditLocal(item)}>Редактировать</button>
+          <button onClick={() => handleDelete(item.id)}>Удалить</button>
+        </td>
+      </tr>
+    );
+  });
+
+  // memoFilteredData теперь = filteredData
+  const memoFilteredData = filteredData;
+
   return (
     <div className="table-container">
       <h2>{table === 'raw_materials' ? 'Сырье' : 'Готовая продукция'}</h2>
@@ -373,19 +460,19 @@ function DataTable({ data: initialData, table, onAdd, onEdit, onDelete, supabase
       </div>
 
       {isSearchVisible && (
-  <div>
-    <SearchControls
-      searchParams={searchParams}
-      handleSearchChange={handleSearchChange}
-      isVisible={isSearchVisible}
-    />
-    <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '10px 0' }}>
-      <button onClick={resetFilters} className="reset-filters-button">
-        Сбросить фильтры
-      </button>
-    </div>
-  </div>
-)}
+        <div>
+          <SearchControls
+            searchParams={searchParams}
+            handleSearchChange={handleSearchChange}
+            isVisible={isSearchVisible}
+          />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '10px 0' }}>
+            <button onClick={resetFilters} className="reset-filters-button">
+              Сбросить фильтры
+            </button>
+          </div>
+        </div>
+      )}
 
       {isTableVisible && (
         <div className="table-wrapper">
@@ -415,97 +502,27 @@ function DataTable({ data: initialData, table, onAdd, onEdit, onDelete, supabase
               </tr>
             </thead>
             <tbody>
-  {filteredData.map((item) => (
-    <tr key={item.id} style={getRowStyle(item.status)}>
-      <td>{item.name}</td>
-      <td>{item.appearance}</td>
-      <td>{item.supplier}</td>
-      <td>{item.manufacturer}</td>
-      <td>{item.receipt_date ? new Date(item.receipt_date).toLocaleDateString() : '-'}</td>
-      <td>{item.check_date ? new Date(item.check_date).toLocaleDateString() : '-'}</td>
-      <td>{item.batch_number}</td>
-      <td>{item.manufacture_date ? new Date(item.manufacture_date).toLocaleDateString() : '-'}</td>
-      <td>{item.expiration_date}</td>
-      <td>{item.appearance_match}</td>
-      <td>{item.actual_mass}</td>
-      <td>{renderList(item.inspected_metrics)}</td>
-      <td>{renderList(item.investigation_result)}</td>
-      <td>{renderList(item.passport_standard)}</td>
-      <td>{item.full_name}</td>
-      {/* Столбец "Акт" */}
-      <td>
-        {item.act_link ? (
-          <button onClick={() => handleViewDocument(item.act_link)}>Просмотр</button>
-        ) : (
-          <button onClick={() => handleActClick(item)}>Создать акт</button>
-        )}
-      </td>
-      {/* Столбец "Наклейка" */}
-      <td>
-        <button onClick={() => handleLabelClick(item)}>Создать наклейку</button>
-      </td>
-      {/* Столбец "Комментарий" */}
-      <td>{item.comment}</td>
-      {/* Столбец "Статус" */}
-      <td>
-        <select
-          value={item.status || ''}
-          onChange={async (e) => {
-            const newStatus = e.target.value;
-            const { data: updatedData, error } = await supabase
-              .from(table)
-              .update({ status: newStatus })
-              .eq('id', item.id)
-              .select();
-            if (error) {
-              console.error("Ошибка обновления статуса:", error);
-              alert("Ошибка обновления статуса");
-            } else if (updatedData && updatedData.length > 0) {
-              onEdit(updatedData[0]);
-            }
-          }}
-        >
-          <option value="">--Выберите статус--</option>
-          <option value="Годное">Годное</option>
-          <option value="На карантине">На карантине</option>
-          <option value="На исследовании">На исследовании</option>
-          <option value="Брак">Брак</option>
-        </select>
-      </td>
-      {/* Столбец "Документы" */}
-      <td>
-        {item.documents && item.documents.length > 0 && item.documents.map((doc, index) => (
-          <div key={index} style={{ marginBottom: '5px', border: '1px solid #ccc', padding: '5px' }}>
-            <div>{doc.name}</div>
-            <button onClick={() => handleViewDocument(doc.link)}>Просмотр</button>
-            <button onClick={() => handleDocumentDelete(item, index)}>Удалить</button>
-          </div>
-        ))}
-        <div style={{ marginTop: '10px' }}>
-          <input
-            type="text"
-            placeholder="Название документа"
-            value={docNames[item.id] || ''}
-            onChange={(e) => setDocNames({ ...docNames, [item.id]: e.target.value })} 
-            style={{ marginBottom: '5px', width: '100%' }}
-          />
-          <input
-            type="file"
-            onChange={(e) => handleDocumentUpload(item, docNames[item.id], e.target.files[0])}
-          />
-        </div>
-      </td>
-      {/* Столбец "Действия" */}
-      <td>
-        <button onClick={() => handleEditLocal(item)}>Редактировать</button>
-        <button onClick={() => handleDelete(item.id)}>Удалить</button>
-      </td>
-    </tr>
-  ))}
-</tbody>
-
-
-
+              {memoFilteredData.map((item) => (
+                <TableRow
+                  key={item.id}
+                  item={item}
+                  getRowStyle={getRowStyle}
+                  supabase={supabase}
+                  table={table}
+                  onEdit={onEdit}
+                  handleViewDocument={handleViewDocument}
+                  handleActClick={handleActClick}
+                  handleLabelClick={handleLabelClick}
+                  handleDocumentDelete={handleDocumentDelete}
+                  handleDocumentUpload={handleDocumentUpload}
+                  handleEditLocal={handleEditLocal}
+                  handleDelete={handleDelete}
+                  docNames={docNames}
+                  setDocNames={setDocNames}
+                  renderList={renderList}
+                />
+              ))}
+            </tbody>
           </table>
         </div>
       )}
