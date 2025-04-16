@@ -6,6 +6,24 @@ import {
   AlignmentType 
 } from 'docx';
 
+// Функция для преобразования dataURL в Uint8Array через base64
+async function dataURLtoUint8ArrayAsync(dataurl) {
+  return new Promise((resolve, reject) => {
+    try {
+      const arr = dataurl.split(',');
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while(n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      resolve(u8arr);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 export async function generateLabelDocument(data) {
   const doc = new Document({
     sections: [
@@ -21,24 +39,15 @@ export async function generateLabelDocument(data) {
           }
         },
         children: [
-          // Заголовок
           new Paragraph({
             text: "Арбитражный образец сырья",
             bold: true,
             alignment: AlignmentType.CENTER,
             spacing: { after: 400 },
           }),
-
-          // Наименование
           createField("Наименование:", data.name),
-          
-          // Производитель
           createField("Производитель:", data.manufacturer),
-          
-          // Поставщик
           createField("Поставщик:", data.supplier),
-
-          // Дата производства и номер партии
           new Paragraph({
             text: `Дата производства: ${formatDate(data.manufacture_date)}`,
             spacing: { after: 200 },
@@ -47,17 +56,11 @@ export async function generateLabelDocument(data) {
             text: `№ партии ${data.batch_number || "___________"}`,
             spacing: { after: 200 },
           }),
-
-          // Даты поставки и проверки
           new Paragraph({
             text: `Дата поставки: ${formatDate(data.receipt_date)}    дата проверки: ${formatDate(data.check_date)}`,
             spacing: { after: 200 },
           }),
-
-          // Ответственное лицо
           createField("Образец отобрал:", data.full_name),
-
-          // Даты отбора и хранения
           new Paragraph({
             text: `Дата отбора: ${formatDate(data.check_date)}    Хранить до: ${formatDate(data.expiration_date)}`,
             spacing: { after: 200 },
@@ -66,7 +69,6 @@ export async function generateLabelDocument(data) {
       },
     ],
   });
-
   return Packer.toBlob(doc);
 }
 

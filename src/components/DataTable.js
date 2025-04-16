@@ -200,30 +200,17 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     }
   };
 
-  // Создание этикетки (без изменений)
+  // Создание этикетки (с изменениями)
   const handleLabelClick = async (item) => {
     try {
       const docBlob = await generateLabelDocument(item);
       const fileName = cleanFileName(`${item.name}_${item.batch_number}_label.docx`);
-      const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-
       const url = URL.createObjectURL(docBlob);
       const a = document.createElement('a');
       a.href = url;
       a.download = fileName;
       document.body.appendChild(a);
       a.click();
-
-      const uploadPath = `/${fileName}`;
-      const fileData = await saveDocumentToDropbox(docBlob, uploadPath, accessToken);
-
-      if (fileData) {
-        const shareableLink = await getDropboxShareableLink(uploadPath, accessToken);
-        if (shareableLink) {
-          setLabelLinks(prev => ({ ...prev, [item.id]: shareableLink }));
-        }
-      }
-
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error) {
@@ -428,6 +415,7 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
                 .update({ status: newStatus })
                 .eq('id', item.id)
                 .select();
+
               if (error) {
                 console.error("Ошибка обновления статуса:", error);
                 alert("Ошибка обновления статуса");

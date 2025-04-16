@@ -38,26 +38,65 @@ function getRowStyle(status) {
 }
 
 // Мемоизированная строка заказа
-const OrderRow = memo(function OrderRow({ order, onStatusChange, onQuickOrder }) {
+const OrderRow = memo(function OrderRow({ order, onStatusChange, onQuickOrder, onEditOrder }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ ...order });
   const rowStyle = getRowStyle(order.status);
   const hasStatusColor = rowStyle && (rowStyle.background || rowStyle.backgroundColor);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setEditForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSave = () => {
+    onEditOrder(editForm);
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditForm({ ...order });
+    setIsEditing(false);
+  };
+
   return (
     <tr
       className={hasStatusColor ? 'status-colored-row' : ''}
       style={rowStyle}
     >
-      <td>{order.name}</td>
-      <td>{order.link ? <a href={order.link} target="_blank" rel="noopener noreferrer">Ссылка</a> : '-'}</td>
-      <td>{order.quantity}</td>
-      <td>{order.note}</td>
-      <td>
-        <select value={order.status || ''} onChange={e => onStatusChange(order.id, e.target.value)}>
-          {statusOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-        </select>
-      </td>
-      <td>
-        <button onClick={() => onQuickOrder(order)} title="Заказать снова">Заказать снова</button>
-      </td>
+      {isEditing ? (
+        <>
+          <td><input name="name" value={editForm.name || ''} onChange={handleChange} /></td>
+          <td><input name="link" value={editForm.link || ''} onChange={handleChange} /></td>
+          <td><input name="quantity" value={editForm.quantity || ''} onChange={handleChange} /></td>
+          <td><input name="note" value={editForm.note || ''} onChange={handleChange} /></td>
+          <td>
+            <select name="status" value={editForm.status || ''} onChange={handleChange}>
+              {statusOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+            </select>
+          </td>
+          <td>
+            <button onClick={handleSave} title="Сохранить">Сохранить</button>
+            <button onClick={handleCancel} title="Отмена">Отмена</button>
+          </td>
+        </>
+      ) : (
+        <>
+          <td>{order.name}</td>
+          <td>{order.link ? <a href={order.link} target="_blank" rel="noopener noreferrer">Ссылка</a> : '-'}</td>
+          <td>{order.quantity}</td>
+          <td>{order.note}</td>
+          <td>
+            <select value={order.status || ''} onChange={e => onStatusChange(order.id, e.target.value)}>
+              {statusOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+            </select>
+          </td>
+          <td>
+            <button onClick={() => onQuickOrder(order)} title="Заказать снова">Заказать снова</button>
+            <button onClick={() => setIsEditing(true)} title="Редактировать">Редактировать</button>
+          </td>
+        </>
+      )}
     </tr>
   );
 });
@@ -73,7 +112,7 @@ function mergeOrders(prevOrders, newOrders) {
   });
 }
 
-function OrderTable({ orders, loading, onQuickOrder, onStatusChange, onAddOrder }) {
+function OrderTable({ orders, loading, onQuickOrder, onStatusChange, onAddOrder, onEditOrder }) {
   const [form, setForm] = useState({ name: '', link: '', quantity: '', note: '' });
   const [stableOrders, setStableOrders] = useState(orders);
 
@@ -120,7 +159,7 @@ function OrderTable({ orders, loading, onQuickOrder, onStatusChange, onAddOrder 
             <tr><td colSpan={6}>Нет заказов</td></tr>
           ) : (
             stableOrders.map(order => (
-              <OrderRow key={order.id} order={order} onStatusChange={onStatusChange} onQuickOrder={onQuickOrder} />
+              <OrderRow key={order.id} order={order} onStatusChange={onStatusChange} onQuickOrder={onQuickOrder} onEditOrder={onEditOrder} />
             ))
           )}
         </tbody>

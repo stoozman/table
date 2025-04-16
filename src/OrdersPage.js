@@ -61,6 +61,15 @@ function OrdersPage() {
     if (!error) fetchOrders();
   };
 
+  const handleEditOrder = async (updatedOrder) => {
+    const { id, ...fields } = updatedOrder;
+    const { error } = await supabase
+      .from('orders')
+      .update({ ...fields, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (!error) fetchOrders();
+  };
+
   return (
     <div style={{ padding: 24 }}>
       <h2>Заказы</h2>
@@ -70,6 +79,7 @@ function OrdersPage() {
         onQuickOrder={handleQuickOrder}
         onStatusChange={handleStatusChange}
         onAddOrder={handleAddOrder}
+        onEditOrder={handleEditOrder}
       />
     </div>
   );
