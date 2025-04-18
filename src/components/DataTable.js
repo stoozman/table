@@ -7,13 +7,19 @@ import {
   getDropboxShareableLink, 
   deleteDocumentFromDropbox 
 } from '../utils/documentGenerator';
-import { generateLabelDocument } from '../utils/labelGenerator';
+import { generateLabelPdf } from '../utils/labelPdfGenerator';
 import useTableSearch from '../hooks/useTableSearch';
 import SearchControls from './SearchControls';
 import './DataTable.css';
 
 function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   const [documentLinks, setDocumentLinks] = useState({});
+  const { searchParams, filteredData, handleSearchChange } = useTableSearch(data);
+  // Debug: inspect array fields and filtering
+  console.log('DataTable full data:', data);
+  console.log('DataTable first item.inspected_metrics:', data[0]?.inspected_metrics, 'type:', typeof data[0]?.inspected_metrics, 'isArray:', Array.isArray(data[0]?.inspected_metrics));
+  console.log('DataTable searchParams:', searchParams);
+  console.log('DataTable filteredData count:', filteredData.length);
   const [labelLinks, setLabelLinks] = useState({});
   const [isTableVisible, setIsTableVisible] = useState(true);
   const [isSearchVisible, setIsSearchVisible] = useState(true);
@@ -22,7 +28,14 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   const [docNames, setDocNames] = useState({});
 
   // СНАЧАЛА получаем filteredData!
-  const { searchParams, filteredData, handleSearchChange } = useTableSearch(data);
+  // Для всех таблиц используем единый компонент поиска
+  const filtersPanel = (
+    <SearchControls
+      searchParams={searchParams}
+      handleSearchChange={handleSearchChange}
+      isVisible={isSearchVisible}
+    />
+  );
 
   // deep equal для сравнения данных по id
   function isRowEqual(a, b) {
@@ -203,9 +216,9 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   // Создание этикетки (с изменениями)
   const handleLabelClick = async (item) => {
     try {
-      const docBlob = await generateLabelDocument(item);
-      const fileName = cleanFileName(`${item.name}_${item.batch_number}_label.docx`);
-      const url = URL.createObjectURL(docBlob);
+      const pdfBlob = await generateLabelPdf(item);
+      const fileName = cleanFileName(`${item.name}_${item.batch_number}_label.pdf`);
+      const url = URL.createObjectURL(pdfBlob);
       const a = document.createElement('a');
       a.href = url;
       a.download = fileName;
@@ -351,7 +364,7 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
         <div style={{ marginTop: '10px', display: 'flex', gap: 4, flexDirection: 'column', minWidth: 220, maxWidth: 320 }}>
           <input
             type="text"
-            placeholder="Название документа"
+            placeholder="Название документов"
             value={docNames[item.id] || ''}
             onChange={(e) => setDocNames({ ...docNames, [item.id]: e.target.value })}
             style={{ marginBottom: '5px', width: '100%' }}
@@ -524,9 +537,9 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
           <td>{item.expiration_date}</td>
           <td>{item.appearance_match}</td>
           <td>{item.actual_mass}</td>
-          <td>{item.inspected_metrics}</td>
-          <td>{item.investigation_result}</td>
-          <td>{item.passport_standard}</td>
+          <td>{renderList(item.inspected_metrics)}</td>
+          <td>{renderList(item.investigation_result)}</td>
+          <td>{renderList(item.passport_standard)}</td>
           <td>{item.comment}</td>
           <td>{renderDocumentsCell(item)}</td>
           <td>{renderActions(item)}</td>
@@ -585,7 +598,7 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
 
       {isSearchVisible && (
         <div>
-          {isSamples ? samplesFilters : fullFilters}
+          {filtersPanel}
           <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '10px 0' }}>
             <button onClick={resetFilters} className="reset-filters-button">
               Сбросить фильтры

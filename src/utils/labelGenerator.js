@@ -6,6 +6,9 @@ import {
   AlignmentType 
 } from 'docx';
 
+// Этот файл больше не нужен для генерации этикетки с QR-кодом — генерация происходит на сервере.
+// Можно оставить только экспорт-заглушку, если где-то есть старые импорты.
+
 // Функция для преобразования dataURL в Uint8Array через base64
 async function dataURLtoUint8ArrayAsync(dataurl) {
   return new Promise((resolve, reject) => {

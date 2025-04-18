@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Button, Modal, Form, Input, DatePicker, Select, Upload, message } from 'antd';
+import { Button, Modal, Form, Input, DatePicker, Select, Upload, message, Table } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons';
 import { createClient } from '@supabase/supabase-js';
 import { useNavigate } from 'react-router-dom';
+import useTableSearch from './hooks/useTableSearch';
 
 const { Option } = Select;
 
@@ -16,6 +17,9 @@ function SamplesTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
   const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
   const supabaseClient = createClient(supabaseUrl, supabaseKey);
+
+  // Фильтрация данных по полям поиска
+  const { searchParams, filteredData, handleSearchChange } = useTableSearch(data);
 
   const columns = [
     {
@@ -405,32 +409,45 @@ function SamplesTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
       <Form layout="inline" style={{ marginBottom: 16 }}>
         <Form.Item name="name" label="Поиск по наименованию">
           <Input
+            name="name"
             placeholder="Поиск по наименованию"
-            value={searchParams?.name || ''}
+            value={searchParams.name || ''}
             onChange={handleSearchChange}
             allowClear
           />
         </Form.Item>
         <Form.Item name="supplier" label="Поиск по поставщику">
           <Input
+            name="supplier"
             placeholder="Поиск по поставщику"
-            value={searchParams?.supplier || ''}
+            value={searchParams.supplier || ''}
             onChange={handleSearchChange}
             allowClear
           />
         </Form.Item>
         <Form.Item name="manufacturer" label="Поиск по производителю">
           <Input
+            name="manufacturer"
             placeholder="Поиск по производителю"
-            value={searchParams?.manufacturer || ''}
+            value={searchParams.manufacturer || ''}
+            onChange={handleSearchChange}
+            allowClear
+          />
+        </Form.Item>
+        <Form.Item name="inspected_metrics" label="Поиск по проверяемым показателям">
+          <Input
+            name="inspected_metrics"
+            placeholder="Поиск по проверяемым показателям"
+            value={searchParams.inspected_metrics || ''}
             onChange={handleSearchChange}
             allowClear
           />
         </Form.Item>
         <Form.Item name="investigation_result" label="Поиск по результату исследования">
           <Input
+            name="investigation_result"
             placeholder="Поиск по результату исследования"
-            value={searchParams?.investigation_result || ''}
+            value={searchParams.investigation_result || ''}
             onChange={handleSearchChange}
             allowClear
           />
@@ -449,7 +466,7 @@ function SamplesTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
 
       <Table
         columns={columns}
-        dataSource={data}
+        dataSource={filteredData}
         bordered
         pagination={{ pageSize: 10 }}
         rowKey="id"

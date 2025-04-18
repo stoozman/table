@@ -68,10 +68,18 @@ function DataForm({ onAdd, onEdit, editingItem }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // Merge any unsaved inputValues into formData arrays
+    const finalData = { ...formData };
+    ['inspected_metrics', 'investigation_result', 'passport_standard'].forEach(field => {
+      const pending = inputValues[field]?.trim();
+      if (pending) {
+        finalData[field] = Array.isArray(finalData[field]) ? [...finalData[field], pending] : [pending];
+      }
+    });
     if (editingItem) {
-      onEdit({ ...formData, id: editingItem.id });
+      onEdit({ ...finalData, id: editingItem.id });
     } else {
-      onAdd(formData);
+      onAdd(finalData);
     }
     setFormData({
       name: '',
