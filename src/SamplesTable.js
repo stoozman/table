@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Button, Modal, Form, Input, DatePicker, Select, Upload, message } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons';
+import React, { useState, useEffect } from 'react';
+import { Button, Modal, Form, Input, DatePicker, Select, Upload, message, Table, Checkbox } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, ClearOutlined } from '@ant-design/icons';
 import { createClient } from '@supabase/supabase-js';
 import { useNavigate } from 'react-router-dom';
 
@@ -16,6 +16,58 @@ function SamplesTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
   const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
   const supabaseClient = createClient(supabaseUrl, supabaseKey);
+
+  // Специальные поля, требующие особой обработки
+  const specialFields = ['inspected_metrics', 'investigation_result', 'passport_standard'];
+  
+  // Функция для отображения данных в таблице - показывает каждое значение с новой строки
+  const displayValueInTable = (value) => {
+    if (value === null || value === undefined) return '';
+    
+    let processedValue = value;
+    
+    // Если это строка - попытаться распарсить JSON
+    if (typeof value === 'string') {
+      try {
+        processedValue = JSON.parse(value);
+      } catch (e) {
+        // Если не получается распарсить - оставить как есть
+      }
+    }
+    
+    // Если это массив - отобразить каждый элемент с новой строки
+    if (Array.isArray(processedValue)) {
+      return (
+        <div>
+          {processedValue.map((item, index) => (
+            <div key={index}>{String(item)}</div>
+          ))}
+        </div>
+      );
+    }
+    
+    return String(processedValue);
+  };
+  
+  // Recursively parse nested JSON strings and flatten arrays into items
+  const extractItems = (value) => {
+    let v = value;
+    // Unwrap JSON strings until not a valid JSON string
+    while (typeof v === 'string') {
+      try { v = JSON.parse(v); } catch { break; }
+    }
+    // If array, recurse
+    if (Array.isArray(v)) {
+      return v.flatMap(item => extractItems(item));
+    }
+    // Otherwise, primitive or object
+    return [v];
+  };
+  // Convert value to newline-separated string for editing
+  const convertToEditableString = (value) => {
+    const items = extractItems(value);
+    return items.map(item => (item != null ? String(item) : '')).join('\n');
+  };
 
   const columns = [
     {
@@ -95,22 +147,25 @@ function SamplesTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
       width: 100,
     },
     {
-      title: 'Показатели',
+      title: 'Проверяемые показатели',
       dataIndex: 'inspected_metrics',
       key: 'inspected_metrics',
-      width: 100,
+      width: 150,
+      render: (text) => displayValueInTable(text),
     },
     {
-      title: 'Результат',
+      title: 'Результат исследования',
       dataIndex: 'investigation_result',
       key: 'investigation_result',
-      width: 100,
+      width: 150,
+      render: (text) => displayValueInTable(text),
     },
     {
-      title: 'Паспорт',
+      title: 'Норматив по паспорту',
       dataIndex: 'passport_standard',
       key: 'passport_standard',
-      width: 100,
+      width: 150,
+      render: (text) => displayValueInTable(text),
     },
     {
       title: 'ФИО',
@@ -170,7 +225,13 @@ function SamplesTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   const handleEdit = (record) => {
     setIsModalVisible(true);
     setEditingRecord(record);
-    form.setFieldsValue(record);
+    // Подготовка массива для Form.List
+    const formData = { ...record };
+    specialFields.forEach(field => {
+      formData[field] = extractItems(record[field]);
+    });
+    console.log('handleEdit - populating fields:', formData);
+    form.setFieldsValue(formData);
   };
 
   const handleDelete = async (id) => {
@@ -193,27 +254,34 @@ function SamplesTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
-      
+      const formattedValues = { ...values };
+      // Убедимся, что массивные поля есть
+      specialFields.forEach(field => {
+        if (!Array.isArray(formattedValues[field])) {
+          formattedValues[field] = [];
+        }
+      });
+
       if (editingRecord) {
         // Обновление записи
         const { error } = await supabaseClient
           .from(table)
-          .update(values)
+          .update(formattedValues)
           .eq('id', editingRecord.id);
 
         if (error) throw error;
 
-        onEdit(values);
+        onEdit({ id: editingRecord.id, ...formattedValues });
         message.success('Запись успешно обновлена');
       } else {
         // Добавление новой записи
         const { error } = await supabaseClient
           .from(table)
-          .insert([values]);
+          .insert([formattedValues]);
 
         if (error) throw error;
 
-        onAdd(values);
+        onAdd(formattedValues);
         message.success('Запись успешно добавлена');
       }
 
@@ -258,6 +326,16 @@ function SamplesTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
       console.error('Ошибка при загрузке:', error);
     }
   };
+
+  // Вспомогательная функция для отображения метки
+  const renderFormItemLabel = (label, required = false) => (
+    <div style={{ marginBottom: '8px' }}>
+      <span>
+        {label}
+        {required && <span style={{ color: '#ff4d4f', marginLeft: '4px' }}>*</span>}
+      </span>
+    </div>
+  );
 
   const renderForm = () => (
     <Form
@@ -353,25 +431,79 @@ function SamplesTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
         <Input />
       </Form.Item>
 
-      <Form.Item
-        name="inspected_metrics"
-        label="Показатели"
-      >
-        <Input />
+      {/* Список проверяемых показателей */}
+      <Form.Item label="Показатели" style={{ marginBottom: 0 }}>
+        <Form.List name="inspected_metrics">
+          {(fields, { add, remove }) => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+              {fields.map(({ key, name, fieldKey, ...rest }) => (
+                <div key={key} style={{ display: 'flex', flexDirection: 'row', gap: 8, width: '100%' }}>
+                  <Form.Item
+                    {...rest}
+                    name={[name]}
+                    fieldKey={[fieldKey]}
+                    rules={[]}
+                    style={{ flex: 1, marginBottom: 0 }}
+                  >
+                    <Input placeholder="Новое значение" />
+                  </Form.Item>
+                  <Button icon={<ClearOutlined />} onClick={() => remove(name)} />
+                </div>
+              ))}
+              <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} style={{ width: '100%' }}>+</Button>
+            </div>
+          )}
+        </Form.List>
       </Form.Item>
 
-      <Form.Item
-        name="investigation_result"
-        label="Результат"
-      >
-        <Input />
+      {/* Список результатов исследования */}
+      <Form.Item label="Результаты" style={{ marginBottom: 0 }}>
+        <Form.List name="investigation_result">
+          {(fields, { add, remove }) => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+              {fields.map(({ key, name, fieldKey, ...rest }) => (
+                <div key={key} style={{ display: 'flex', flexDirection: 'row', gap: 8, width: '100%' }}>
+                  <Form.Item
+                    {...rest}
+                    name={[name]}
+                    fieldKey={[fieldKey]}
+                    rules={[]}
+                    style={{ flex: 1, marginBottom: 0 }}
+                  >
+                    <Input placeholder="Новое значение" />
+                  </Form.Item>
+                  <Button icon={<ClearOutlined />} onClick={() => remove(name)} />
+                </div>
+              ))}
+              <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} style={{ width: '100%' }}>+</Button>
+            </div>
+          )}
+        </Form.List>
       </Form.Item>
 
-      <Form.Item
-        name="passport_standard"
-        label="Паспорт"
-      >
-        <Input />
+      {/* Список нормативов */}
+      <Form.Item label="Нормативы" style={{ marginBottom: 0 }}>
+        <Form.List name="passport_standard">
+          {(fields, { add, remove }) => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+              {fields.map(({ key, name, fieldKey, ...rest }) => (
+                <div key={key} style={{ display: 'flex', flexDirection: 'row', gap: 8, width: '100%' }}>
+                  <Form.Item
+                    {...rest}
+                    name={[name]}
+                    fieldKey={[fieldKey]}
+                    rules={[]}
+                    style={{ flex: 1, marginBottom: 0 }}
+                  >
+                    <Input placeholder="Новое значение" />
+                  </Form.Item>
+                  <Button icon={<ClearOutlined />} onClick={() => remove(name)} />
+                </div>
+              ))}
+              <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} style={{ width: '100%' }}>+</Button>
+            </div>
+          )}
+        </Form.List>
       </Form.Item>
 
       <Form.Item
@@ -422,44 +554,45 @@ function SamplesTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
         >
           <Button icon={<UploadOutlined />}>Загрузить документы</Button>
         </Upload>
-        </Form.Item>
+      </Form.Item>
 
-<Form.Item>
-  <Button type="primary" htmlType="submit">
-    Сохранить
-  </Button>
-  <Button onClick={handleCancel} style={{ marginLeft: 8 }}>
-    Отмена
-  </Button>
-</Form.Item>
-</Form>
-);
+      <Form.Item>
+        <Button type="primary" htmlType="submit">
+          Сохранить
+        </Button>
+        <Button onClick={handleCancel} style={{ marginLeft: 8 }}>
+          Отмена
+        </Button>
+      </Form.Item>
+    </Form>
+  );
 
-return (
-<div>
-<Button type="primary" onClick={handleAdd} style={{ marginBottom: 16 }}>
-  <PlusOutlined /> Добавить образец
-</Button>
+  return (
+    <div>
+      <Button type="primary" onClick={handleAdd} style={{ marginBottom: 16 }}>
+        <PlusOutlined /> Добавить образец
+      </Button>
 
-<Modal
-  title={editingRecord ? 'Редактировать образец' : 'Добавить образец'}
-  visible={isModalVisible}
-  onOk={handleOk}
-  onCancel={handleCancel}
-  width={800}
->
-  {renderForm()}
-</Modal>
+      <Modal
+        title={editingRecord ? 'Редактировать образец' : 'Добавить образец'}
+        visible={isModalVisible}
+        onCancel={handleCancel}
+        width={800}
+        footer={null}
+      >
+        {renderForm()}
+      </Modal>
 
-<Table
-  columns={columns}
-  dataSource={data}
-  bordered
-  pagination={{ pageSize: 10 }}
-  rowKey="id"
-/>
-</div>
-);
+      <Table
+        columns={columns}
+        dataSource={data}
+        bordered
+        pagination={{ pageSize: 10 }}
+        rowKey="id"
+        scroll={{ x: 1500 }}
+      />
+    </div>
+  );
 }
 
 export default SamplesTable;

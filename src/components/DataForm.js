@@ -29,17 +29,23 @@ function DataForm({ onAdd, onEdit, editingItem }) {
   // Инициализация формы данными для редактирования
   useEffect(() => {
     if (editingItem) {
+      // Parse special fields: JSON strings or arrays
+      const parseField = (field) => {
+        const v = editingItem[field];
+        if (typeof v === 'string') {
+          try {
+            const parsed = JSON.parse(v);
+            return Array.isArray(parsed) ? parsed : [String(parsed)];
+          } catch { return [v]; }
+        }
+        if (Array.isArray(v)) return v;
+        return v != null ? [String(v)] : [];
+      };
       setFormData({
         ...editingItem,
-        inspected_metrics: Array.isArray(editingItem.inspected_metrics) 
-          ? editingItem.inspected_metrics 
-          : editingItem.inspected_metrics ? [editingItem.inspected_metrics] : [],
-        investigation_result: Array.isArray(editingItem.investigation_result) 
-          ? editingItem.investigation_result 
-          : editingItem.investigation_result ? [editingItem.investigation_result] : [],
-        passport_standard: Array.isArray(editingItem.passport_standard) 
-          ? editingItem.passport_standard 
-          : editingItem.passport_standard ? [editingItem.passport_standard] : []
+        inspected_metrics: parseField('inspected_metrics'),
+        investigation_result: parseField('investigation_result'),
+        passport_standard: parseField('passport_standard'),
       });
     }
   }, [editingItem]);
@@ -63,6 +69,22 @@ function DataForm({ onAdd, onEdit, editingItem }) {
     setInputValues(prev => ({
       ...prev,
       [field]: ''
+    }));
+  };
+
+  // Функция для удаления значения по индексу из массива поля
+  const handleRemoveFromField = (field, index) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: prev[field].filter((_, i) => i !== index)
+    }));
+  };
+
+  // Функция для редактирования значения по индексу в массиве поля
+  const handleEditFieldItem = (field, index, value) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: prev[field].map((item, i) => i === index ? value : item)
     }));
   };
 
@@ -258,65 +280,89 @@ function DataForm({ onAdd, onEdit, editingItem }) {
       {/* Множественные поля для проверяемых показателей, результата исследования и нормативов */}
       <div style={fieldStyle}>
         <label style={labelStyle}>Проверяемые показатели</label>
-        <ul>
-          {formData.inspected_metrics.map((metric, idx) => (
-            <li key={idx}>{metric}</li>
-          ))}
-        </ul>
-        <input
-          type="text"
-          value={inputValues.inspected_metrics}
-          onChange={(e) =>
-            setInputValues({ ...inputValues, inspected_metrics: e.target.value })
-          }
-          style={inputStyle}
-          placeholder="Введите показатель"
-        />
-        <button type="button" onClick={() => handleAddToField('inspected_metrics')}>
-          Добавить показатель
-        </button>
+        {formData.inspected_metrics.map((metric, idx) => (
+          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input
+              type="text"
+              value={metric}
+              onChange={(e) => handleEditFieldItem('inspected_metrics', idx, e.target.value)}
+              style={inputStyle}
+            />
+            <button type="button" onClick={() => handleRemoveFromField('inspected_metrics', idx)}>
+              ×
+            </button>
+          </div>
+        ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+          <input
+            type="text"
+            value={inputValues.inspected_metrics}
+            onChange={(e) => setInputValues({ ...inputValues, inspected_metrics: e.target.value })}
+            style={inputStyle}
+            placeholder="Новое значение"
+          />
+          <button type="button" onClick={() => handleAddToField('inspected_metrics')}>
+            +
+          </button>
+        </div>
       </div>
 
       <div style={fieldStyle}>
         <label style={labelStyle}>Результат исследования</label>
-        <ul>
-          {formData.investigation_result.map((res, idx) => (
-            <li key={idx}>{res}</li>
-          ))}
-        </ul>
-        <input
-          type="text"
-          value={inputValues.investigation_result}
-          onChange={(e) =>
-            setInputValues({ ...inputValues, investigation_result: e.target.value })
-          }
-          style={inputStyle}
-          placeholder="Введите результат"
-        />
-        <button type="button" onClick={() => handleAddToField('investigation_result')}>
-          Добавить результат
-        </button>
+        {formData.investigation_result.map((res, idx) => (
+          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input
+              type="text"
+              value={res}
+              onChange={(e) => handleEditFieldItem('investigation_result', idx, e.target.value)}
+              style={inputStyle}
+            />
+            <button type="button" onClick={() => handleRemoveFromField('investigation_result', idx)}>
+              ×
+            </button>
+          </div>
+        ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+          <input
+            type="text"
+            value={inputValues.investigation_result}
+            onChange={(e) => setInputValues({ ...inputValues, investigation_result: e.target.value })}
+            style={inputStyle}
+            placeholder="Новый результат"
+          />
+          <button type="button" onClick={() => handleAddToField('investigation_result')}>
+            +
+          </button>
+        </div>
       </div>
 
       <div style={fieldStyle}>
         <label style={labelStyle}>Норматив по паспорту</label>
-        <ul>
-          {formData.passport_standard.map((std, idx) => (
-            <li key={idx}>{std}</li>
-          ))}
-        </ul>
-        <input
-          type="text"
-          value={inputValues.passport_standard}
-          onChange={(e) =>
-            setInputValues({ ...inputValues, passport_standard: e.target.value })
-          }
-          style={inputStyle}
-          placeholder="Введите норматив"
-        />
-        <button type="button" onClick={() => handleAddToField('passport_standard')}>
-          Добавить норматив
-        </button>
+        {formData.passport_standard.map((std, idx) => (
+          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input
+              type="text"
+              value={std}
+              onChange={(e) => handleEditFieldItem('passport_standard', idx, e.target.value)}
+              style={inputStyle}
+            />
+            <button type="button" onClick={() => handleRemoveFromField('passport_standard', idx)}>
+              ×
+            </button>
+          </div>
+        ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+          <input
+            type="text"
+            value={inputValues.passport_standard}
+            onChange={(e) => setInputValues({ ...inputValues, passport_standard: e.target.value })}
+            style={inputStyle}
+            placeholder="Новый норматив"
+          />
+          <button type="button" onClick={() => handleAddToField('passport_standard')}>
+            +
+          </button>
+        </div>
       </div>
 
       <div style={fieldStyle}>
