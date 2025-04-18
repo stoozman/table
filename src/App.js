@@ -77,28 +77,21 @@ function AppContent() {
 
         if (error) console.error('Error adding data:', error);
         else {
-            console.log('Successfully added data, insertedData:', insertedData);
+            console.log('Successfully added data');
             fetchData();
         }
     };
 
     const editData = async (updatedData) => {
-        const payload = {
-            ...updatedData,
-            inspected_metrics: updatedData.inspected_metrics,
-            investigation_result: updatedData.investigation_result,
-            passport_standard: updatedData.passport_standard
-        };
         const { data: updatedRecord, error } = await supabase
             .from(table)
-            .update(payload)
+            .update(updatedData)
             .eq('id', updatedData.id)
             .select();
-
+    
         if (error) {
             console.error('Error updating data:', error);
         } else if (updatedRecord && updatedRecord.length > 0) {
-            console.log('Successfully updated data, updatedRecord:', updatedRecord);
             setData(prevData =>
                 prevData.map(item => item.id === updatedData.id ? updatedRecord[0] : item)
             );
@@ -246,29 +239,29 @@ function AppContent() {
                 </>} />
                 <Route path="/tasks" element={<TasksPage />} />
                 <Route path="/samples-table" element={
-                  <>
-                    <div style={{ margin: '20px 0' }}>
-                      <input
-                        type="file"
-                        accept=".xlsx, .xls"
-                        onChange={handleFileUpload}
-                        style={{ display: 'none' }}
-                        id="fileInput"
-                      />
-                      <label htmlFor="fileInput" style={{ cursor: 'pointer', padding: '10px', backgroundColor: '#007bff', color: 'white', borderRadius: '5px' }}>
-                        Загрузить данные из Excel
-                      </label>
-                    </div>
-                    <DataTable 
-                        data={data} 
-                        table="samples"
-                        onAdd={addData} 
-                        onEdit={editData} 
-                        onDelete={deleteData} 
-                        supabase={supabase} 
-                    />
-                  </>
-                } />
+  <>
+    <div style={{ margin: '20px 0' }}>
+      <input
+        type="file"
+        accept=".xlsx, .xls"
+        onChange={handleFileUpload}
+        style={{ display: 'none' }}
+        id="fileInput"
+      />
+      <label htmlFor="fileInput" style={{ cursor: 'pointer', padding: '10px', backgroundColor: '#007bff', color: 'white', borderRadius: '5px' }}>
+        Загрузить данные из Excel
+      </label>
+    </div>
+    <DataTable 
+      data={data} 
+      table="samples"
+      onAdd={addData} 
+      onEdit={editData} 
+      onDelete={deleteData} 
+      supabase={supabase} 
+    />
+  </>
+} />
                 <Route path="/orders" element={<OrdersPage />} />
             </Routes>
         </div>
