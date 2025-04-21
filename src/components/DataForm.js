@@ -127,6 +127,16 @@ function DataForm({ onAdd, onEdit, editingItem }) {
     });
   };
 
+  const handleCancelEdit = () => {
+    setFormData({
+      name: '', appearance: '', supplier: '', manufacturer: '', receipt_date: '', batch_number: '', manufacture_date: '', expiration_date: '', appearance_match: '', actual_mass: '', inspected_metrics: [], investigation_result: [], passport_standard: [], full_name: '', comment: ''
+    });
+    setInputValues({
+      inspected_metrics: '', investigation_result: '', passport_standard: ''
+    });
+    if (typeof onEdit === 'function') onEdit(null); // сигнал родителю, что редактирование отменено
+  };
+
   const formStyle = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',

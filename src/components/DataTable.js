@@ -486,6 +486,21 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     });
   };
 
+  // Сброс редактирования при отмене
+  const handleCancelEdit = () => {
+    setEditingItem(null);
+  };
+
+  // После успешного обновления (onEdit), сбрасываем editingItem
+  const handleEdit = (item) => {
+    if (item === null) {
+      setEditingItem(null);
+    } else {
+      onEdit(item);
+      setEditingItem(null);
+    }
+  };
+
   // Определяем набор столбцов и фильтров по типу таблицы
   const isSamples = table === 'samples' || table === 'samples-table';
 
@@ -627,10 +642,19 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
       <div className="input-scroll">
         <DataForm
           onAdd={onAdd}
-          onEdit={onEdit}
+          onEdit={handleEdit}
           editingItem={editingItem}
           setEditingItem={setEditingItem}
         />
+        {editingItem && (
+          <button
+            type="button"
+            style={{ margin: '16px 0 0 8px', padding: '8px 16px', background: '#ccc', color: '#333', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+            onClick={handleCancelEdit}
+          >
+            Отменить редактирование
+          </button>
+        )}
       </div>
     </div>
   );
