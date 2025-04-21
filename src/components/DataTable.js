@@ -276,6 +276,7 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     }
     try {
       const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
+      console.log('DROPBOX TOKEN:', accessToken);
       const extension = file.name.split('.').pop();
       const fileName = cleanFileName(`${customName}_${item.batch_number}_${Date.now()}.${extension}`);
       const uploadPath = `documents/${fileName}`;
