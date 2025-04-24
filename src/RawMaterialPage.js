@@ -111,17 +111,19 @@ function RawMaterialPage() {
   
       if (error) throw error;
   
-      // Сортировка данных по алфавиту перед установкой состояния
-      const sortedMaterials = data.sort((a, b) => {
-        const nameCompare = a.product_name.localeCompare(b.product_name);
-        if (nameCompare !== 0) return nameCompare;
-        // Стабильная сортировка по id
-        return (a.id || 0) - (b.id || 0);
-      });
+      // Фильтрация: исключаем полностью пустые строки (например, если нет названия и номера партии)
+      const filteredData = data.filter(item =>
+        (item.product_name && item.product_name.trim() !== '') ||
+        (item.batch_number && item.batch_number.trim() !== '')
+      );
 
-      console.log('Sorted materials:', sortedMaterials); // Логирование для проверки
-  
-      setMaterials(sortedMaterials || []);
+      // Сортировка данных по алфавиту перед установкой состояния
+      const sortedMaterials = filteredData.sort((a, b) => {
+        if (!a.product_name) return 1;
+        if (!b.product_name) return -1;
+        return a.product_name.localeCompare(b.product_name, 'ru');
+      });
+      setMaterials(sortedMaterials);
     } catch (error) {
       console.error('Ошибка загрузки материалов:', error);
     }

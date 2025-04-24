@@ -9,7 +9,7 @@ import robotoFont from './fonts/ofont.ru_Roboto.ttf';
  */
 export async function generateLabelPdf(data) {
   const doc = new jsPDF({ unit: 'mm', format: [80, 60] }); // размер этикетки
-  let y = 8;
+  let y = 7;
 
   // Загрузка шрифта Roboto
   const fontUrl = robotoFont;
@@ -19,34 +19,33 @@ export async function generateLabelPdf(data) {
   doc.addFont('Roboto.ttf', 'Roboto', 'normal');
   doc.setFont('Roboto');
 
-  doc.setFontSize(13);
-  doc.text('Арбитражный образец сырья', 40, y, { align: 'center' });
-  y += 7;
+  doc.setFontSize(10);
+  doc.text('Арбитражный образец', 40, y, { align: 'center' });
+  y += 5;
 
   // QR-код
   const qrData = String(data.id); // Можно заменить на ссылку или другой уникальный текст
-  const qrUrl = await QRCode.toDataURL(qrData, { margin: 1, width: 80 });
-  doc.addImage(qrUrl, 'PNG', 5, y, 22, 22);
-  doc.setFontSize(9);
-  doc.text(`ID: ${data.id}`, 40, y + 7, { align: 'center' });
-  y += 24;
+  const qrUrl = await QRCode.toDataURL(qrData, { margin: 0, width: 56 }); // 14 мм при 300 dpi
+  doc.addImage(qrUrl, 'PNG', 4, y, 14, 14);
+  // Убрали вывод ID на наклейке
+  y += 15;
 
-  doc.setFontSize(10);
+  // Компактная функция вывода полей
   function field(label, value) {
-    doc.text(`${label} ${value || '__________'}`, 30, y);
-    y += 5;
+    doc.setFontSize(6);
+    const text = `${label} ${value || '__________'}`;
+    const lines = doc.splitTextToSize(text, 34); // ширина 34 мм
+    doc.text(lines, 22, y);
+    y += lines.length * 2.9 + 0.3;
   }
 
-  field('Наименование:', data.name);
-  field('Производитель:', data.manufacturer);
-  field('Поставщик:', data.supplier);
-  field('Дата производства:', formatDate(data.manufacture_date));
-  field('№ партии:', data.batch_number);
-  field('Дата поставки:', formatDate(data.receipt_date));
-  field('Дата проверки:', formatDate(data.check_date));
-  field('Образец отобрал:', data.full_name);
-  field('Дата отбора:', formatDate(data.check_date));
-  field('Хранить до:', formatDate(data.expiration_date));
+  field('Наим.:', data.name);
+  field('Изг.:', data.manufacturer);
+  field('Пост.:', data.supplier);
+  field('Изг. дата:', formatDate(data.manufacture_date));
+  field('Партия:', data.batch_number);
+  field('Поставка:', formatDate(data.receipt_date));
+  field('Годен до:', formatDate(data.expiration_date));
 
   return doc.output('blob');
 }

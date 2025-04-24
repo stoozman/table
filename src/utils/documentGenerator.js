@@ -1,4 +1,4 @@
-import { Document, Packer, Paragraph, Table, TableCell, TableRow, BorderStyle, WidthType, AlignmentType, HeadingLevel, TableLayoutType } from 'docx';
+import { Document, Packer, Paragraph, Table, TableCell, TableRow, BorderStyle, WidthType, AlignmentType, HeadingLevel, TableLayoutType, ImageRun } from 'docx';
 import axios from 'axios';
 
 // Создание строк таблицы
@@ -23,6 +23,101 @@ const createTableRow = (cells, isHeader = false) => {
 
 export async function generateDocument(data) {
     try {
+        // Загружаем логотип из public (используем fetch)
+        let logoBuffer = null;
+        try {
+            const response = await fetch('/logo.png');
+            if (response.ok) {
+                logoBuffer = await response.arrayBuffer();
+            } else {
+                // Если png нет, пробуем jpg
+                const jpgResponse = await fetch('/logo.jpg');
+                if (jpgResponse.ok) {
+                    logoBuffer = await jpgResponse.arrayBuffer();
+                }
+            }
+        } catch (e) {
+            logoBuffer = null;
+        }
+
+        const children = [];
+        if (logoBuffer) {
+            children.push(
+                new Paragraph({
+                    children: [
+                        new ImageRun({
+                            data: logoBuffer,
+                            transformation: { width: 120, height: 48 },
+                        })
+                    ],
+                    alignment: AlignmentType.LEFT,
+                    spacing: { after: 200 },
+                })
+            );
+        }
+
+        children.push(
+            new Paragraph({
+                text: "АКТ",
+                heading: HeadingLevel.HEADING_1,
+                alignment: AlignmentType.CENTER,
+                bold: true,
+                spacing: { after: 400 }
+            })
+        );
+
+        children.push(...[
+            `Наименование: ${data.name || "Не указано"}`,
+            `Поставщик: ${data.supplier || "Не указан"}`,
+            `Производитель: ${data.manufacturer || "Не указан"}`,
+            `Дата поступления: ${data.receipt_date ? new Date(data.receipt_date).toLocaleDateString() : "Не указана"}`,
+            `Дата проверки: ${data.check_date ? new Date(data.check_date).toLocaleDateString() : "Не указана"}`,
+            `№ партии: ${data.batch_number || "Не указан"}`,
+            `Дата изготовления: ${data.manufacture_date ? new Date(data.manufacture_date).toLocaleDateString() : "Не указана"}`
+        ].map(text => new Paragraph({ 
+            text, 
+            spacing: { after: 100 },
+            alignment: AlignmentType.LEFT 
+        })));
+
+        children.push(
+            new Table({
+                width: { size: 100, type: WidthType.PERCENTAGE },
+                layout: TableLayoutType.FIXED,
+                borders: {
+                    top: { style: BorderStyle.SINGLE, size: 2, color: "#000000" },
+                    bottom: { style: BorderStyle.SINGLE, size: 2, color: "#000000" },
+                    left: { style: BorderStyle.SINGLE, size: 2, color: "#000000" },
+                    right: { style: BorderStyle.SINGLE, size: 2, color: "#000000" },
+                    insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: "#000000" },
+                    insideVertical: { style: BorderStyle.SINGLE, size: 1, color: "#000000" },
+                },
+                rows: [
+                    createTableRow(["№ п/п", "Наименование показателя", "Норма", "Факт"], true),
+                    createTableRow([
+                        "1.",
+                        "Внешний вид",
+                        data.appearance || "Стандартный",
+                        data.appearance_match || "Соответствует"
+                    ]),
+                    createTableRow([
+                        "2.",
+                        "Показатели безопасности",
+                        data.inspected_metrics || "-",
+                        data.investigation_result || "-"
+                    ])
+                ]
+            })
+        );
+
+        children.push(
+            new Paragraph({
+                text: "Заведующий лаборатории: _________________________________Гадзиковский С.В.",
+                spacing: { before: 400 },
+                alignment: AlignmentType.LEFT
+            })
+        );
+
         const doc = new Document({
             sections: [{
                 properties: { 
@@ -31,64 +126,7 @@ export async function generateDocument(data) {
                         size: { width: 11906, height: 16838, orientation: 'portrait' }
                     } 
                 },
-                children: [
-                    new Paragraph({
-                        text: "АКТ",
-                        heading: HeadingLevel.HEADING_1,
-                        alignment: AlignmentType.CENTER,
-                        bold: true,
-                        spacing: { after: 400 }
-                    }),
-
-                    ...[
-                        `Наименование: ${data.name || "Не указано"}`,
-                        `Поставщик: ${data.supplier || "Не указан"}`,
-                        `Производитель: ${data.manufacturer || "Не указан"}`,
-                        `Дата поступления: ${data.receipt_date ? new Date(data.receipt_date).toLocaleDateString() : "Не указана"}`,
-                        `Дата проверки: ${data.check_date ? new Date(data.check_date).toLocaleDateString() : "Не указана"}`,
-                        `№ партии: ${data.batch_number || "Не указан"}`,
-                        `Дата изготовления: ${data.manufacture_date ? new Date(data.manufacture_date).toLocaleDateString() : "Не указана"}`
-
-                    ].map(text => new Paragraph({ 
-                        text, 
-                        spacing: { after: 100 },
-                        alignment: AlignmentType.LEFT 
-                    })),
-
-                    new Table({
-                        width: { size: 100, type: WidthType.PERCENTAGE },
-                        layout: TableLayoutType.FIXED,
-                        borders: {
-                            top: { style: BorderStyle.SINGLE, size: 2, color: "#000000" },
-                            bottom: { style: BorderStyle.SINGLE, size: 2, color: "#000000" },
-                            left: { style: BorderStyle.SINGLE, size: 2, color: "#000000" },
-                            right: { style: BorderStyle.SINGLE, size: 2, color: "#000000" },
-                            insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: "#000000" },
-                            insideVertical: { style: BorderStyle.SINGLE, size: 1, color: "#000000" },
-                        },
-                        rows: [
-                            createTableRow(["№ п/п", "Наименование показателя", "Норма", "Факт"], true),
-                            createTableRow([
-                                "1.",
-                                "Внешний вид",
-                                data.appearance || "Стандартный",
-                                data.appearance_match || "Соответствует"
-                            ]),
-                            createTableRow([
-                                "2.",
-                                data.inspected_metrics || "Основные показатели",
-                                data.passport_standard || "Нет данных",
-                                data.investigation_result || "Соответствует"
-                            ])
-                        ]
-                    }),
-
-                    new Paragraph({
-                        text: "Заведующий лаборатории: _________________________________Гадзиковский С.В.",
-                        spacing: { before: 400 },
-                        alignment: AlignmentType.LEFT
-                    })
-                ]
+                children
             }]
         });
 
