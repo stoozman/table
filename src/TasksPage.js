@@ -26,6 +26,7 @@ function TasksPage() {
   const [newTask, setNewTask] = useState({
     product_name: '',
     comment: '',
+    comment_color: '#e6f7ff',
     completed: false,
     is_important: false,
     repeat_type: 'none',
@@ -149,11 +150,11 @@ function TasksPage() {
     }
   };
 
-  const updateTaskComment = async (taskId, newComment) => {
+  const updateTaskComment = async (taskId, newComment, newColor) => {
     try {
       const { error } = await supabase
         .from('tasks')
-        .update({ comment: newComment })
+        .update({ comment: newComment, comment_color: newColor })
         .eq('id', taskId);
 
       if (error) throw error;
@@ -188,6 +189,7 @@ function TasksPage() {
       setNewTask({
         product_name: '',
         comment: '',
+        comment_color: '#e6f7ff',
         completed: false,
         is_important: false,
         repeat_type: 'none',
@@ -302,13 +304,22 @@ const TaskItem = ({ task, onComplete, onUpdateComment, moveCard, index }) => {
   });
 
   const [editingComment, setEditingComment] = useState(false);
-  const [localComment, setLocalComment] = useState(task.comment);
+  const [localComment, setLocalComment] = useState(task.comment || '');
+  const [localCommentColor, setLocalCommentColor] = useState(task.comment_color || '#e6f7ff');
+
+  useEffect(() => {
+    if (editingComment) {
+      setLocalComment(task.comment || '');
+      setLocalCommentColor(task.comment_color || '#e6f7ff');
+    }
+  }, [editingComment, task.comment, task.comment_color]);
+
   const dueDate = new Date(task.next_due_date);
   const isOverdue = dueDate < new Date() && !task.completed;
   const isUrgent = isOverdue && task.is_important;
 
   const handleCommentSave = async () => {
-    await onUpdateComment(task.id, localComment);
+    await onUpdateComment(task.id, localComment, localCommentColor);
     setEditingComment(false);
   };
 
@@ -331,36 +342,31 @@ const TaskItem = ({ task, onComplete, onUpdateComment, moveCard, index }) => {
               {task.product_name}
               {task.is_important && <span className="important-badge"> ★ Срочно</span>}
             </h3>
-            
             {editingComment ? (
               <div className="comment-editor">
                 <textarea
-                  value={localComment}
-                  onChange={(e) => setLocalComment(e.target.value)}
                   className="comment-textarea"
-                  placeholder="Введите комментарий..."
+                  value={localComment}
+                  onChange={e => setLocalComment(e.target.value)}
                 />
+                <div style={{ display: 'flex', alignItems: 'center', marginTop: 8 }}>
+                  <label style={{ marginRight: 8 }}>Цвет комментария:</label>
+                  <input
+                    type="color"
+                    value={localCommentColor}
+                    onChange={e => setLocalCommentColor(e.target.value)}
+                    style={{ width: 32, height: 24, border: 'none', background: 'none', cursor: 'pointer' }}
+                  />
+                </div>
                 <div className="comment-buttons">
-                  <button 
-                    onClick={handleCommentSave}
-                    className="save-button"
-                  >
-                    Сохранить
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setLocalComment(task.comment);
-                      setEditingComment(false);
-                    }}
-                    className="cancel-button"
-                  >
-                    Отмена
-                  </button>
+                  <button className="save-button" onClick={handleCommentSave}>Сохранить</button>
+                  <button className="cancel-button" onClick={() => setEditingComment(false)}>Отмена</button>
                 </div>
               </div>
             ) : (
-              <div 
+              <div
                 className="comment-display"
+                style={{ background: task.comment_color || '#e6f7ff' }}
                 onClick={() => setEditingComment(true)}
               >
                 {task.comment || <span className="add-comment">Добавить комментарий...</span>}
@@ -474,6 +480,15 @@ const AddTaskForm = ({ newTask, setNewTask, addTask }) => {
             onChange={e => setNewTask({...newTask, comment: e.target.value})}
             className="task-textarea"
           />
+          <div style={{ display: 'flex', alignItems: 'center', marginTop: 8 }}>
+            <label style={{ marginRight: 8 }}>Цвет комментария:</label>
+            <input
+              type="color"
+              value={newTask.comment_color || '#e6f7ff'}
+              onChange={e => setNewTask({ ...newTask, comment_color: e.target.value })}
+              style={{ width: 32, height: 24, border: 'none', background: 'none', cursor: 'pointer' }}
+            />
+          </div>
         </div>
       )}
 

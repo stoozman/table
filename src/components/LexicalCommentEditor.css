@@ -1,0 +1,49 @@
+.editor-container {
+  border: 1px solid #ddd;
+  border-radius: 7px;
+  background: #fafbfc;
+  padding: 0;
+  margin-bottom: 8px;
+}
+.editor-toolbar {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #eee;
+  background: #f4f4f4;
+  border-radius: 7px 7px 0 0;
+}
+.editor-toolbar button {
+  border: none;
+  background: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+.editor-toolbar button:hover {
+  background: #e0e0e0;
+}
+.editor-toolbar input[type="color"] {
+  width: 28px;
+  height: 22px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 3px;
+}
+.editor-input {
+  min-height: 60px;
+  padding: 10px;
+  outline: none;
+  border-radius: 0 0 7px 7px;
+  background: #fff;
+  font-size: 15px;
+}
+.editor-placeholder {
+  color: #888;
+  font-style: italic;
+  padding: 10px;
+}
