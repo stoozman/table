@@ -26,7 +26,7 @@ function TasksPage() {
   const [newTask, setNewTask] = useState({
     product_name: '',
     comment: '',
-    comment_color: '#e6f7ff',
+    comment_color: '#775cc1',
     completed: false,
     is_important: false,
     repeat_type: 'none',
@@ -189,7 +189,7 @@ function TasksPage() {
       setNewTask({
         product_name: '',
         comment: '',
-        comment_color: '#e6f7ff',
+        comment_color: '#775cc1',
         completed: false,
         is_important: false,
         repeat_type: 'none',
@@ -305,12 +305,12 @@ const TaskItem = ({ task, onComplete, onUpdateComment, moveCard, index }) => {
 
   const [editingComment, setEditingComment] = useState(false);
   const [localComment, setLocalComment] = useState(task.comment || '');
-  const [localCommentColor, setLocalCommentColor] = useState(task.comment_color || '#e6f7ff');
+  const [localCommentColor, setLocalCommentColor] = useState(task.comment_color || '#775cc1');
 
   useEffect(() => {
     if (editingComment) {
       setLocalComment(task.comment || '');
-      setLocalCommentColor(task.comment_color || '#e6f7ff');
+      setLocalCommentColor(task.comment_color || '#775cc1');
     }
   }, [editingComment, task.comment, task.comment_color]);
 
@@ -366,7 +366,7 @@ const TaskItem = ({ task, onComplete, onUpdateComment, moveCard, index }) => {
             ) : (
               <div
                 className="comment-display"
-                style={{ background: task.comment_color || '#e6f7ff' }}
+                style={{ background: task.comment_color || '#775cc1' }}
                 onClick={() => setEditingComment(true)}
               >
                 {task.comment || <span className="add-comment">Добавить комментарий...</span>}
@@ -484,7 +484,7 @@ const AddTaskForm = ({ newTask, setNewTask, addTask }) => {
             <label style={{ marginRight: 8 }}>Цвет комментария:</label>
             <input
               type="color"
-              value={newTask.comment_color || '#e6f7ff'}
+              value={newTask.comment_color || '#775cc1'}
               onChange={e => setNewTask({ ...newTask, comment_color: e.target.value })}
               style={{ width: 32, height: 24, border: 'none', background: 'none', cursor: 'pointer' }}
             />
