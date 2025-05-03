@@ -115,6 +115,22 @@ function AppContent() {
         setTable(newTable);
     };
 
+    // --- ДОРАБОТАННАЯ ФУНКЦИЯ ДЛЯ КОНВЕРТАЦИИ ДАТЫ ИЗ EXCEL ---
+    function excelDateToISO(dateNum) {
+        if (typeof dateNum === 'number') {
+            const date = new Date(Math.round((dateNum - 25569) * 86400 * 1000));
+            date.setMinutes(date.getMinutes() + date.getTimezoneOffset());
+            return date.toISOString().slice(0, 10);
+        }
+        if (typeof dateNum === 'string' && dateNum.trim() !== '') {
+            const parsed = new Date(dateNum);
+            if (!isNaN(parsed)) {
+                return parsed.toISOString().slice(0, 10);
+            }
+        }
+        return null;
+    }
+
     const handleFileUpload = (event) => {
         const file = event.target.files[0];
         if (!file) return;
@@ -128,26 +144,70 @@ function AppContent() {
             const worksheet = workbook.Sheets[sheetName];
 
             const jsonData = XLSX.utils.sheet_to_json(worksheet);
+            let formattedData = [];
 
-            const formattedData = jsonData.map(row => ({
-                name: row['Наименование'],
-                appearance: row['Внешний вид'],
-                supplier: row['Поставщик'],
-                manufacturer: row['Производитель'],
-                receipt_date: row['Дата поступления'],
-                batch_number: row['Номер партии'],
-                manufacture_date: row['Дата изготовления'],
-                expiration_date: row['Срок годности'],
-                appearance_match: row['Соответствие внешнего вида'],
-                actual_mass: row['Фактическая масса'],
-                inspected_metrics: row['Проверяемые показатели'],
-                investigation_result: row['Результат исследования'],
-                passport_standard: row['Норматив по паспорту'],
-                full_name: row['ФИО'],
-                act: row['Акт'],
-                label: row['Наклейка'],
-                comment: row['Комментарий']
-            }));
+            // ЛОГИРУЕМ что парсится из Excel
+            console.log('jsonData:', jsonData);
+            if (jsonData.length > 0) {
+                console.log('jsonData[0]:', jsonData[0]);
+                console.log('Ключи:', Object.keys(jsonData[0]));
+            }
+
+            if (table === 'raw_materials') {
+                formattedData = jsonData.map(row => ({
+                    name: row['Наименование'],
+                    appearance: row['Внешний вид'],
+                    supplier: row['Поставщик'],
+                    manufacturer: row['Производитель'],
+                    receipt_date: excelDateToISO(row['Дата поступления']),
+                    check_date: null, // всегда null, чтобы не было пустых строк
+                    batch_number: row['№ партии'],
+                    manufacture_date: excelDateToISO(row['Дата изготовления']),
+                    expiration_date: excelDateToISO(row['Срок годности (годен до)']),
+                    appearance_match: row['Соответствие внешнего вида'],
+                    actual_mass: row['Фактическая масса (кг)'],
+                    inspected_metrics: row['Проверяемые показатели '],
+                    investigation_result: row['Результат исследований'],
+                    passport_standard: row['Норматив по паспорту'],
+                    full_name: '',
+                    act: '',
+                    label: '',
+                    comment: ''
+                })).filter(row => row.name || row.supplier || row.manufacturer);
+            } else if (table === 'finished_products' || table === 'samples') {
+                formattedData = jsonData.map(row => ({
+                    name: row['Наименование'],
+                    appearance: row['Внешний вид'],
+                    supplier: row['Поставщик'],
+                    manufacturer: row['Производитель'],
+                    receipt_date: row['Дата поступления'],
+                    check_date: row['Дата проверки'],
+                    batch_number: row['Номер партии'],
+                    manufacture_date: row['Дата изготовления'],
+                    expiration_date: row['Срок годности'],
+                    appearance_match: row['Соответствие внешнего вида'],
+                    actual_mass: row['Фактическая масса'],
+                    inspected_metrics: row['Проверяемые показатели'],
+                    investigation_result: row['Результат исследования'],
+                    passport_standard: row['Норматив по паспорту'],
+                    full_name: row['ФИО'],
+                    act: row['Акт'],
+                    label: row['Наклейка'],
+                    comment: row['Комментарий']
+                }))
+                .filter(row =>
+                    (row.name && row.name.trim() !== '') ||
+                    (row.batch_number && row.batch_number.trim() !== '') ||
+                    (row.supplier && row.supplier.trim() !== '') ||
+                    (row.manufacturer && row.manufacturer.trim() !== '')
+                );
+            }
+
+            // ЛОГИРУЕМ что реально пойдет в базу
+            console.log('formattedData:', formattedData);
+
+            // ЛОГ перед отправкой данных в Supabase
+            console.log('formattedData to upload:', formattedData);
 
             const { data: insertedData, error } = await supabase
                 .from(table)
@@ -157,10 +217,11 @@ function AppContent() {
                 console.error('Error uploading data:', error);
                 alert('Ошибка при загрузке данных из Excel!');
             } else {
-                console.log('Successfully uploaded data:', insertedData);
                 alert('Данные успешно загружены!');
                 fetchData();
             }
+
+            event.target.value = '';
         };
 
         reader.readAsArrayBuffer(file);
