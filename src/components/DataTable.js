@@ -369,7 +369,15 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
             onChange={(e) => setDocNames({ ...docNames, [item.id]: e.target.value })}
             style={{ marginBottom: '5px', width: '100%' }}
           />
-          {/* Удалено поле выбора файла из верхней части страницы */}
+          <input
+            type="file"
+            onChange={e => {
+              const file = e.target.files[0];
+              handleDocumentUpload(item, docNames[item.id], file);
+              e.target.value = '';
+            }}
+            style={{ marginBottom: '5px', width: '100%' }}
+          />
         </div>
       </div>
     );

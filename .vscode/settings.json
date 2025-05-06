@@ -1,0 +1,7 @@
+{
+  "eslint.workingDirectories": [
+    { "directory": ".", "changeProcessCWD": true },
+    { "directory": "table_android", "changeProcessCWD": true }
+  ],
+  "dart.flutterSdkPath": "<путь_к_flutter_SDK>"
+}
