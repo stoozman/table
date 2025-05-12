@@ -7,6 +7,7 @@ import TasksPage from './TasksPage';
 import RawMaterialPage from './RawMaterialPage';
 import SamplesTable from './SamplesTable';
 import OrdersPage from './OrdersPage';
+import SignDocumentPage from './SignDocumentPage';
 
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
@@ -249,6 +250,9 @@ function AppContent() {
                 <Link to="/orders">
                     <button>Заказы</button>
                 </Link>
+                <Link to="/sign-document">
+                    <button>Подписать документ</button>
+                </Link>
             </div>
 
             <Routes>
@@ -324,6 +328,7 @@ function AppContent() {
   </>
 } />
                 <Route path="/orders" element={<OrdersPage />} />
+                <Route path="/sign-document" element={<SignDocumentPage />} />
             </Routes>
         </div>
     );
