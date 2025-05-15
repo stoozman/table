@@ -137,25 +137,45 @@ export async function generateDocument(data) {
     }
 }
 
+// Преобразует объект в JSON с ASCII-escape не-ASCII символов (для Dropbox-API-Arg)
+function toAsciiJson(obj) {
+    return JSON.stringify(obj).replace(/[\u007F-\uFFFF]/g, function(chr) {
+        return '\\u' + ('0000' + chr.charCodeAt(0).toString(16)).slice(-4);
+    });
+}
+
 export async function saveDocumentToDropbox(fileBlob, path, accessToken) {
     // Убираем начальный слеш, если он есть
     const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-    
-    const response = await axios.post(
-        'https://content.dropboxapi.com/2/files/upload',
-        fileBlob,
-        {
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-                'Content-Type': 'application/octet-stream',
-                'Dropbox-API-Arg': JSON.stringify({
-                    path: `/${cleanPath}`,
-                    mode: 'overwrite'
-                })
+    const dropboxPath = `/${cleanPath}`;
+    console.log('[DROPBOX UPLOAD] path:', dropboxPath);
+    try {
+        const response = await axios.post(
+            'https://content.dropboxapi.com/2/files/upload',
+            fileBlob,
+            {
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Content-Type': 'application/octet-stream',
+                    'Dropbox-API-Arg': toAsciiJson({
+                        path: dropboxPath,
+                        mode: 'overwrite'
+                    })
+                }
             }
+        );
+        return response.data;
+    } catch (error) {
+        if (error.response && error.response.status === 409) {
+            console.error('[DROPBOX UPLOAD] 409 Conflict! path:', dropboxPath, 'error:', error.response.data);
+            alert('Ошибка Dropbox: 409 Conflict при загрузке файла!\n' +
+                  'Путь: ' + dropboxPath + '\n' +
+                  'Возможно, файл заблокирован, путь некорректен или есть конфликт версий.');
+        } else {
+            console.error('[DROPBOX UPLOAD] Ошибка загрузки файла:', error.response ? error.response.data : error.message);
         }
-    );
-    return response.data;
+        throw error;
+    }
 }
 
 export async function getDropboxShareableLink(filePath, accessToken) {
@@ -163,59 +183,67 @@ export async function getDropboxShareableLink(filePath, accessToken) {
     const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
 
     try {
-        // Первый способ - создание новой общей ссылки
-        const createResponse = await axios.post(
-            'https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings',
-            { 
-                path: `/${cleanPath}`, 
-                settings: { 
-                    requested_visibility: 'public',
-                    audience: 'public'
-                } 
-            },
-            { 
-                headers: { 
+        // Получаем temporary link
+        const response = await axios.post(
+            'https://api.dropboxapi.com/2/files/get_temporary_link',
+            { path: `/${cleanPath}` },
+            {
+                headers: {
                     'Authorization': `Bearer ${accessToken}`,
                     'Content-Type': 'application/json'
-                } 
+                }
             }
         );
-        
-        return createResponse.data.url.replace('?dl=0', '?raw=1');
-
+        return response.data.link;
     } catch (error) {
-        // Если ошибка связана с существованием ссылки
-        if (error.response && error.response.data.error_summary.includes('shared_link_already_exists')) {
-            try {
-                // Получаем существующую ссылку
-                const listResponse = await axios.post(
-                    'https://api.dropboxapi.com/2/sharing/list_shared_links',
-                    { 
-                        path: `/${cleanPath}`,
-                        direct_only: true
-                    },
-                    { 
-                        headers: { 
-                            'Authorization': `Bearer ${accessToken}`,
-                            'Content-Type': 'application/json'
-                        } 
-                    }
-                );
-                
-                const existingLink = listResponse.data.links?.[0]?.url;
-                return existingLink ? existingLink.replace('?dl=0', '?raw=1') : null;
+        console.error('Ошибка получения temporary link из Dropbox:', error.response ? error.response.data : error.message);
+        throw new Error('Не удалось получить временную ссылку Dropbox');
+    }
+}
 
-            } catch (listError) {
-                console.error('Ошибка получения существующей ссылки:', listError.response ? listError.response.data : listError.message);
-                
-                // Возвращаем исходную ссылку, если не удалось получить новую
-                return `https://www.dropbox.com/scl/fi/${cleanPath}`.replace('?dl=0', '?raw=1');
+
+export async function createDropboxFolder(path, accessToken) {
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    try {
+        await axios.post(
+            'https://api.dropboxapi.com/2/files/create_folder_v2',
+            { path: cleanPath, autorename: false },
+            {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                }
             }
+        );
+    } catch (error) {
+        // Если папка уже есть — не ошибка
+        if (!(error.response && error.response.data && error.response.data.error_summary && error.response.data.error_summary.startsWith('path/conflict/folder'))) {
+            console.error('Ошибка создания папки Dropbox:', error.response ? error.response.data : error.message);
         }
+    }
+}
 
-        // Для других типов ошибок
-        console.error('Ошибка создания общей ссылки:', error.response ? error.response.data : error.message);
-        throw new Error('Не удалось создать общедоступную ссылку');
+export async function listDropboxFiles(path, accessToken) {
+    // Получить список файлов в папке Dropbox
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    try {
+        const response = await axios.post(
+            'https://api.dropboxapi.com/2/files/list_folder',
+            {
+                path: cleanPath === '/' ? '' : cleanPath,
+                recursive: false
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+        return response.data.entries;
+    } catch (error) {
+        console.error('Ошибка получения списка файлов Dropbox:', error.response ? error.response.data : error.message);
+        return [];
     }
 }
 
