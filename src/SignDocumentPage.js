@@ -159,8 +159,34 @@ useEffect(() => {
     }
   };
 
+  const handleDeleteSignature = async () => {
+    if (window.confirm('Вы уверены, что хотите удалить подпись? Это действие нельзя отменить.')) {
+      try {
+        const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
+        // Удаляем подпись из Dropbox
+        await deleteDocumentFromDropbox('/signatures/signature.png', accessToken);
+        // Очищаем локальное состояние
+        setSignatureFile(null);
+        setSignatureImg(null);
+        setSignatureLoaded(false);
+        localStorage.removeItem('signatureDataUrl');
+      } catch (err) {
+        console.error('Ошибка при удалении подписи:', err);
+        alert('Не удалось удалить подпись. Пожалуйста, попробуйте снова.');
+      }
+    }
+  };
+
   const onSignatureChange = async (e) => {
     const file = e.target.files[0];
+    if (!file) return;
+    
+    // Проверяем тип файла
+    if (!file.type.match('image/.*')) {
+      alert('Пожалуйста, загрузите файл изображения (PNG, JPG, JPEG)');
+      return;
+    }
+
     // Преобразуем в dataURL для localStorage
     const reader = new FileReader();
     reader.onloadend = async () => {
@@ -168,13 +194,17 @@ useEffect(() => {
       setSignatureFile(file);
       setSignatureImg(dataUrl);
       localStorage.setItem('signatureDataUrl', dataUrl);
+      
       // Сохраняем подпись в Dropbox
       try {
         const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-        await saveDocumentToDropbox(file, 'signatures/signature.png', accessToken);
+        await createDropboxFolder('/signatures', accessToken);
+        await saveDocumentToDropbox(file, '/signatures/signature.png', accessToken);
         setSignatureLoaded(true);
+        alert('Подпись успешно сохранена!');
       } catch (err) {
-        alert('Ошибка загрузки подписи в Dropbox');
+        console.error('Ошибка загрузки подписи в Dropbox:', err);
+        alert('Ошибка при сохранении подписи. Пожалуйста, попробуйте снова.');
       }
     };
     reader.readAsDataURL(file);
@@ -248,12 +278,22 @@ useEffect(() => {
           </form>
         )}
 
-        <label>Загрузить изображение подписи:
-          <input type="file" accept="image/*" onChange={onSignatureChange} />
-        </label>
-        <label>Загрузить изображение ФИО:
-          <input type="file" accept="image/*" onChange={onFioChange} />
-        </label>
+        <div className="signature-upload">
+          <label>Изображение подписи:
+            <input type="file" accept="image/*" onChange={onSignatureChange} />
+          </label>
+          {signatureLoaded && (
+            <button 
+              type="button" 
+              onClick={handleDeleteSignature}
+              style={{ marginLeft: '10px', color: 'red' }}
+              title="Удалить подпись"
+            >
+              Удалить подпись
+            </button>
+          )}
+        </div>
+
       </div>
       <div className="preview-section">
         {file && file.type === 'application/pdf' && (
