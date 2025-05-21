@@ -230,6 +230,21 @@ function AppContent() {
         reader.readAsArrayBuffer(file);
     };
 
+    useEffect(() => {
+        // Проверяем сессию при загрузке приложения
+        supabase.auth.getSession().then(({ data }) => {
+            if (data.session) setIsAuth(true);
+            else setIsAuth(false);
+        });
+        // Подписка на изменения сессии (например, выход)
+        const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+            setIsAuth(!!session);
+        });
+        return () => {
+            listener?.subscription?.unsubscribe?.();
+        };
+    }, []);
+
     if (!isAuth) {
         return <AuthPage onAuth={() => setIsAuth(true)} />;
     }
@@ -261,6 +276,10 @@ function AppContent() {
                 </Link>
                 <button onClick={async () => {
                     await supabase.auth.signOut();
+                    // Очищаем все ключи Supabase из localStorage
+                    Object.keys(localStorage).forEach(key => {
+                        if (key.startsWith('sb-')) localStorage.removeItem(key);
+                    });
                     setIsAuth(false);
                 }} style={{ marginLeft: 'auto', background: '#f44336', color: 'white', border: 'none', borderRadius: 4, padding: '8px 16px', cursor: 'pointer' }}>
                     Выйти
