@@ -8,12 +8,14 @@ import RawMaterialPage from './RawMaterialPage';
 import SamplesTable from './SamplesTable';
 import OrdersPage from './OrdersPage';
 import SignDocumentPage from './SignDocumentPage';
+import AuthPage from './AuthPage';
 
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 function AppContent() {
+    const [isAuth, setIsAuth] = useState(false);
     const [data, setData] = useState([]);
     const [table, setTable] = useState('raw_materials');
     const location = useLocation();
@@ -228,6 +230,10 @@ function AppContent() {
         reader.readAsArrayBuffer(file);
     };
 
+    if (!isAuth) {
+        return <AuthPage onAuth={() => setIsAuth(true)} />;
+    }
+
     return (
         <div>
             <h1>Table App</h1>
@@ -253,6 +259,12 @@ function AppContent() {
                 <Link to="/sign-document">
                     <button>Подписать документ</button>
                 </Link>
+                <button onClick={async () => {
+                    await supabase.auth.signOut();
+                    setIsAuth(false);
+                }} style={{ marginLeft: 'auto', background: '#f44336', color: 'white', border: 'none', borderRadius: 4, padding: '8px 16px', cursor: 'pointer' }}>
+                    Выйти
+                </button>
             </div>
 
             <Routes>
