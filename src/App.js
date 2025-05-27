@@ -9,6 +9,9 @@ import SamplesTable from './SamplesTable';
 import OrdersPage from './OrdersPage';
 import SignDocumentPage from './SignDocumentPage';
 import AuthPage from './AuthPage';
+import UserDashboard from './UserDashboard';
+import SignDocumentUploadPage from './SignDocumentUploadPage';
+import SignDocumentSignPage from './SignDocumentSignPage';
 
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
@@ -251,7 +254,20 @@ function AppContent() {
 
     return (
         <div>
-            <h1>Table App</h1>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+                <button
+                    onClick={async () => {
+                        await supabase.auth.signOut();
+                        Object.keys(localStorage).forEach(key => {
+                            if (key.startsWith('sb-')) localStorage.removeItem(key);
+                        });
+                        setIsAuth(false);
+                    }}
+                    style={{ background: '#f44336', color: 'white', border: 'none', borderRadius: 4, padding: '8px 16px', cursor: 'pointer' }}
+                >
+                    Выйти
+                </button>
+            </div>
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
                 <Link to="/raw-materials-table">
                     <button>Таблица сырья</button>
@@ -266,111 +282,110 @@ function AppContent() {
                     <button>Приход сырья</button>
                 </Link>
                 <Link to="/samples-table">
-  <button>Таблица образцов</button>
-</Link>
+                    <button>Таблица образцов</button>
+                </Link>
                 <Link to="/orders">
                     <button>Заказы</button>
                 </Link>
-                <Link to="/sign-document">
+                <Link to="/sign-document/upload">
+                    <button>Загрузка/скачивание документа</button>
+                </Link>
+                <Link to="/sign-document/sign">
                     <button>Подписать документ</button>
                 </Link>
-                <button onClick={async () => {
-                    await supabase.auth.signOut();
-                    // Очищаем все ключи Supabase из localStorage
-                    Object.keys(localStorage).forEach(key => {
-                        if (key.startsWith('sb-')) localStorage.removeItem(key);
-                    });
-                    setIsAuth(false);
-                }} style={{ marginLeft: 'auto', background: '#f44336', color: 'white', border: 'none', borderRadius: 4, padding: '8px 16px', cursor: 'pointer' }}>
-                    Выйти
-                </button>
+                {/* <Link to="/sign-document">
+                    <button>Подписать документ</button>
+                </Link> */}
             </div>
-
             <Routes>
-                <Route path="/" element={<Navigate to="/tasks" replace />} />
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard" element={<UserDashboard />} />
                 <Route path="/raw-materials" element={<RawMaterialPage />} />
-                <Route path="/raw-materials-table" element={<>
+                <Route path="/raw-materials-table" element={
+                  <>
                     <div style={{ margin: '20px 0' }}>
-                        <input
-                            type="file"
-                            accept=".xlsx, .xls"
-                            onChange={handleFileUpload}
-                            style={{ display: 'none' }}
-                            id="fileInput"
-                        />
-                        <label htmlFor="fileInput" style={{ cursor: 'pointer', padding: '10px', backgroundColor: '#007bff', color: 'white', borderRadius: '5px' }}>
-                            Загрузить данные из Excel
-                        </label>
+                      <input
+                        type="file"
+                        accept=".xlsx, .xls"
+                        onChange={handleFileUpload}
+                        style={{ display: 'none' }}
+                        id="fileInput"
+                      />
+                      <label htmlFor="fileInput" style={{ cursor: 'pointer', padding: '10px', backgroundColor: '#007bff', color: 'white', borderRadius: '5px' }}>
+                        Загрузить данные из Excel
+                      </label>
                     </div>
                     <DataTable 
-                        data={data} 
-                        table="raw_materials"
-                        onAdd={addData} 
-                        onEdit={editData} 
-                        onDelete={deleteData} 
-                        supabase={supabase} 
+                      data={data} 
+                      table="raw_materials"
+                      onAdd={addData} 
+                      onEdit={editData} 
+                      onDelete={deleteData} 
+                      supabase={supabase} 
                     />
-                </>} />
-                <Route path="/finished-products" element={<>
+                  </>
+                } />
+                <Route path="/finished-products" element={
+                  <>
                     <div style={{ margin: '20px 0' }}>
-                        <input
-                            type="file"
-                            accept=".xlsx, .xls"
-                            onChange={handleFileUpload}
-                            style={{ display: 'none' }}
-                            id="fileInput"
-                        />
-                        <label htmlFor="fileInput" style={{ cursor: 'pointer', padding: '10px', backgroundColor: '#007bff', color: 'white', borderRadius: '5px' }}>
-                            Загрузить данные из Excel
-                        </label>
+                      <input
+                        type="file"
+                        accept=".xlsx, .xls"
+                        onChange={handleFileUpload}
+                        style={{ display: 'none' }}
+                        id="fileInput"
+                      />
+                      <label htmlFor="fileInput" style={{ cursor: 'pointer', padding: '10px', backgroundColor: '#007bff', color: 'white', borderRadius: '5px' }}>
+                        Загрузить данные из Excel
+                      </label>
                     </div>
                     <DataTable 
-                        data={data} 
-                        table="finished_products"
-                        onAdd={addData} 
-                        onEdit={editData} 
-                        onDelete={deleteData} 
-                        supabase={supabase} 
+                      data={data} 
+                      table="finished_products"
+                      onAdd={addData} 
+                      onEdit={editData} 
+                      onDelete={deleteData} 
+                      supabase={supabase} 
                     />
-                </>} />
+                  </>
+                } />
                 <Route path="/tasks" element={<TasksPage />} />
                 <Route path="/samples-table" element={
-  <>
-    <div style={{ margin: '20px 0' }}>
-      <input
-        type="file"
-        accept=".xlsx, .xls"
-        onChange={handleFileUpload}
-        style={{ display: 'none' }}
-        id="fileInput"
-      />
-      <label htmlFor="fileInput" style={{ cursor: 'pointer', padding: '10px', backgroundColor: '#007bff', color: 'white', borderRadius: '5px' }}>
-        Загрузить данные из Excel
-      </label>
-    </div>
-    <DataTable 
-      data={data} 
-      table="samples"
-      onAdd={addData} 
-      onEdit={editData} 
-      onDelete={deleteData} 
-      supabase={supabase} 
-    />
-  </>
-} />
+                  <>
+                    <div style={{ margin: '20px 0' }}>
+                      <input
+                        type="file"
+                        accept=".xlsx, .xls"
+                        onChange={handleFileUpload}
+                        style={{ display: 'none' }}
+                        id="fileInput"
+                      />
+                      <label htmlFor="fileInput" style={{ cursor: 'pointer', padding: '10px', backgroundColor: '#007bff', color: 'white', borderRadius: '5px' }}>
+                        Загрузить данные из Excel
+                      </label>
+                    </div>
+                    <DataTable 
+                      data={data} 
+                      table="samples"
+                      onAdd={addData} 
+                      onEdit={editData} 
+                      onDelete={deleteData} 
+                      supabase={supabase} 
+                    />
+                  </>
+                } />
                 <Route path="/orders" element={<OrdersPage />} />
-                <Route path="/sign-document" element={<SignDocumentPage />} />
+                <Route path="/sign-document/upload" element={<SignDocumentUploadPage />} />
+                <Route path="/sign-document/sign" element={<SignDocumentSignPage />} />
             </Routes>
         </div>
     );
 }
 
-function App() {
+export default function App() {
     return (
         <Router>
             <AppContent />
         </Router>
     );
 }
-
-export default App;

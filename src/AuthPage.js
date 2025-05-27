@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { useNavigate } from 'react-router-dom';
 
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
@@ -12,6 +13,7 @@ export default function AuthPage({ onAuth }) {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -47,6 +49,8 @@ export default function AuthPage({ onAuth }) {
           }
         }
         if (onAuth) onAuth();
+        // Redirect to dashboard after login
+        navigate('/dashboard');
       }
     } catch (err) {
       setError(err.message || 'Ошибка');
