@@ -1,3 +1,4 @@
+// Несущественный комментарий для теста git-коммита
 import React, { useState, useEffect } from 'react';
 import { saveDocumentToDropbox, getDropboxShareableLink, deleteDocumentFromDropbox, listDropboxFiles, createDropboxFolder } from './utils/documentGenerator';
 import './SignDocumentPage.css';
