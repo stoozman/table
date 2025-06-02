@@ -2,15 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import supabase from './supabase';
 
-// Map of features to their display names and routes
+// Оставляем только нужные разделы для дашборда
 const FEATURE_MAP = {
-  raw_materials: { label: 'Raw Materials', route: '/raw-materials' },
-  finished_products: { label: 'Finished Products', route: '/finished-products' },
-  tasks: { label: 'Tasks', route: '/tasks' },
-  samples: { label: 'Samples', route: '/samples' },
-  orders: { label: 'Orders', route: '/orders' },
-  sign_document: { label: 'Sign Document', route: '/sign-document' },
-  admin: { label: 'Admin', route: '/admin' },
+  raw_materials: { label: 'Приход сырья', route: '/raw-materials' },
+  finished_products: { label: 'Таблица готовой продукции', route: '/finished-products' },
+  tasks: { label: 'Задачи', route: '/tasks' },
+  samples_table: { label: 'Таблица образцов', route: '/samples-table' },
+  orders: { label: 'Заказы', route: '/orders' },
+  sign_document_upload: { label: 'Загрузка/скачивание документа', route: '/sign-document/upload' },
+  sign_document_sign: { label: 'Подписать документ', route: '/sign-document/sign' },
 };
 
 export default function UserDashboard() {
@@ -60,22 +60,8 @@ export default function UserDashboard() {
 
   return (
     <div className="dashboard-container">
-      <h2>Welcome, {profile.name || profile.email}!</h2>
-      <div className="dashboard-buttons">
-        {allowedFeatures.map((feature) => {
-          const meta = FEATURE_MAP[feature];
-          if (!meta) return null;
-          return (
-            <button
-              key={feature}
-              onClick={() => navigate(meta.route)}
-              className="dashboard-btn"
-            >
-              {meta.label}
-            </button>
-          );
-        })}
-      </div>
+      <h2>Добро пожаловать, {profile.name || profile.email}!</h2>
+      {/* Здесь можно добавить быстрые действия или статистику, если нужно */}
     </div>
   );
 }

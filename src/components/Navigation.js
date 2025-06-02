@@ -9,8 +9,7 @@ const pages = [
   { path: 'finished-products', name: 'ГП' },
   { path: 'samples-table', name: 'Образцы' },
   { path: 'orders', name: 'Заказы' },
-  { path: 'sign-document', name: 'Подписать документ' },
-  { path: 'admin', name: 'Управление доступом' }
+  { path: 'sign-document', name: 'Подписать документ' }
 ];
 
 export default function Navigation() {
