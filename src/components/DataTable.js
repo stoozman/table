@@ -3,9 +3,9 @@ import * as XLSX from 'xlsx';
 import DataForm from './DataForm';
 import { 
   generateDocument, 
-  saveDocumentToDropbox, 
-  getDropboxShareableLink, 
-  deleteDocumentFromDropbox 
+  saveDocumentToSupabase, 
+  getSupabasePublicUrl, 
+  deleteDocumentFromSupabase 
 } from '../utils/documentGenerator';
 import { generateLabelPdf } from '../utils/labelPdfGenerator';
 import useTableSearch from '../hooks/useTableSearch';
@@ -174,39 +174,22 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     try {
       const docBlob = await generateDocument(item);
       const fileName = cleanFileName(`${item.name}_${item.batch_number}.docx`);
-      const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-
-      const url = URL.createObjectURL(docBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-
-      const uploadPath = `/${fileName}`;
-      const fileData = await saveDocumentToDropbox(docBlob, uploadPath, accessToken);
-
-      if (fileData) {
-        const shareableLink = await getDropboxShareableLink(uploadPath, accessToken);
-        if (shareableLink) {
-          const formattedLink = shareableLink.replace('?dl=0', '?raw=1');
-          const { data: updatedData, error } = await supabase
-            .from(table)
-            .update({ act_link: formattedLink })
-            .eq('id', item.id)
-            .select();
-
-          if (error) {
-            console.error('Error fetching latest data:', error);
-          } else {
-            onEdit(updatedData[0]);
-          }
-          setDocumentLinks(prev => ({ ...prev, [item.id]: formattedLink }));
+      const uploadPath = `acts/${fileName}`;
+      await saveDocumentToSupabase(docBlob, uploadPath);
+      const publicUrl = getSupabasePublicUrl(uploadPath);
+      if (publicUrl) {
+        const { data: updatedData, error } = await supabase
+          .from(table)
+          .update({ act_link: publicUrl })
+          .eq('id', item.id)
+          .select();
+        if (error) {
+          console.error('Error fetching latest data:', error);
+        } else {
+          onEdit(updatedData[0]);
         }
+        setDocumentLinks(prev => ({ ...prev, [item.id]: publicUrl }));
       }
-
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
     } catch (error) {
       console.error('Ошибка:', error.message);
       alert(`Ошибка создания акта: ${error.message}`);
@@ -232,24 +215,17 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     }
   };
 
-  // Удаление акта (без изменений)
+  // Удаление акта
   const handleActDelete = async (item) => {
     try {
-      const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
       const fileName = cleanFileName(`${item.name}_${item.batch_number}.docx`);
-      const uploadPath = `/${fileName}`;
-
-      const dropboxDeleteSuccess = await deleteDocumentFromDropbox(uploadPath, accessToken);
-      if (!dropboxDeleteSuccess) {
-        console.error("Ошибка удаления файла из Dropbox");
-      }
-
+      const uploadPath = `acts/${fileName}`;
+      await deleteDocumentFromSupabase(uploadPath);
       const { data: updatedData, error } = await supabase
         .from(table)
         .update({ act_link: null })
         .eq('id', item.id)
         .select();
-
       if (error) {
         console.error('Ошибка обновления записи в Supabase:', error);
         throw error;
@@ -275,33 +251,27 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
       return;
     }
     try {
-      const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
       const extension = file.name.split('.').pop();
       const fileName = cleanFileName(`${customName}_${item.batch_number}_${Date.now()}.${extension}`);
       const uploadPath = `documents/${fileName}`;
-      const fileData = await saveDocumentToDropbox(file, uploadPath, accessToken);
-
-      if (fileData) {
-        const shareableLink = await getDropboxShareableLink(uploadPath, accessToken);
-        if (shareableLink) {
-          const newDoc = { name: customName, link: shareableLink, fileName };
-          const updatedDocuments = item.documents ? [...item.documents, newDoc] : [newDoc];
-
-          const { data: updatedData, error } = await supabase
-            .from(table)
-            .update({ documents: updatedDocuments })
-            .eq('id', item.id)
-            .select();
-
-          if (error) {
-            console.error("Ошибка обновления записи в Supabase:", error);
-            throw error;
-          }
-          if (updatedData && updatedData.length > 0) {
-            onEdit(updatedData[0]);
-          }
-          setDocNames(prev => ({ ...prev, [item.id]: '' }));
+      await saveDocumentToSupabase(file, uploadPath);
+      const publicUrl = getSupabasePublicUrl(uploadPath);
+      if (publicUrl) {
+        const newDoc = { name: customName, link: publicUrl, fileName };
+        const updatedDocuments = item.documents ? [...item.documents, newDoc] : [newDoc];
+        const { data: updatedData, error } = await supabase
+          .from(table)
+          .update({ documents: updatedDocuments })
+          .eq('id', item.id)
+          .select();
+        if (error) {
+          console.error("Ошибка обновления записи в Supabase:", error);
+          throw error;
         }
+        if (updatedData && updatedData.length > 0) {
+          onEdit(updatedData[0]);
+        }
+        setDocNames(prev => ({ ...prev, [item.id]: '' }));
       }
     } catch (error) {
       console.error("Ошибка загрузки документов:", error);
@@ -312,22 +282,19 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   // Функция удаления документов из нового столбца "Документы"
   const handleDocumentDelete = async (item, index) => {
     try {
-      const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
       const docToDelete = item.documents[index];
       if (!docToDelete || !docToDelete.fileName) {
         alert("Нет информации для удаления документов");
         return;
       }
       const filePath = `documents/${docToDelete.fileName}`;
-      await deleteDocumentFromDropbox(filePath, accessToken);
-
+      await deleteDocumentFromSupabase(filePath);
       const updatedDocuments = item.documents.filter((_, i) => i !== index);
       const { data: updatedData, error } = await supabase
         .from(table)
         .update({ documents: updatedDocuments })
         .eq('id', item.id)
         .select();
-
       if (error) {
         console.error("Ошибка обновления записи в Supabase:", error);
         throw error;

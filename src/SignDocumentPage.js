@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { saveDocumentToDropbox, getDropboxShareableLink, deleteDocumentFromDropbox, listDropboxFiles, createDropboxFolder } from './utils/documentGenerator';
+import { saveDocumentToSupabase, getSupabasePublicUrl, deleteDocumentFromSupabase, listSupabaseFiles, createSupabaseFolder } from './utils/documentGenerator';
 import { PDFDocument } from 'pdf-lib';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
@@ -15,15 +15,14 @@ function SignDocumentPage() {
   const [signedDocs, setSignedDocs] = useState([]);
   const [loadingDocs, setLoadingDocs] = useState(true);
 
-  // Получаем списки документов из Dropbox
+  // Получаем списки документов из Supabase Storage
   useEffect(() => {
     async function fetchLists() {
       setLoadingDocs(true);
-      const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-      await createDropboxFolder('/documents/unsigned', accessToken);
-      await createDropboxFolder('/documents/signed', accessToken);
-      const unsigned = await listDropboxFiles('/documents/unsigned', accessToken);
-      const signed = await listDropboxFiles('/documents/signed', accessToken);
+      await createSupabaseFolder('documents/unsigned');
+      await createSupabaseFolder('documents/signed');
+      const unsigned = await listSupabaseFiles('documents/unsigned');
+      const signed = await listSupabaseFiles('documents/signed');
       setUnsignedDocs(unsigned.filter(f => f['.tag'] === 'file'));
       setSignedDocs(signed.filter(f => f['.tag'] === 'file'));
       setLoadingDocs(false);
@@ -34,43 +33,38 @@ function SignDocumentPage() {
   const [signedDocLink, setSignedDocLink] = useState(null);
   const [currentUnsignedDoc, setCurrentUnsignedDoc] = useState(null); // выбранный для подписания
 
-  // Проверка наличия документов в Dropbox
+  // Проверка наличия документов в Supabase Storage
   useEffect(() => {
     async function checkDocStatus() {
-      const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
       try {
         // Пробуем получить ссылку на подписанный документ
-        const signedLink = await getDropboxShareableLink('documents/signed.pdf', accessToken);
+        const signedLink = await getSupabasePublicUrl('documents/signed.pdf');
         if (signedLink) {
           setDocStatus('signed');
           setSignedDocLink(signedLink);
           return;
         }
       } catch (err) {
-        if (!(err.response && err.response.data && err.response.data.error_summary && err.response.data.error_summary.startsWith('path/not_found'))) {
-          console.error('Ошибка получения temporary link для signed.pdf:', err.response ? err.response.data : err.message);
-        }
+        console.error('Ошибка получения ссылки для signed.pdf:', err.message);
       }
       try {
         // Если нет подписанного, пробуем получить ссылку на неподписанный
-        const unsignedLink = await getDropboxShareableLink('documents/unsigned.pdf', accessToken);
+        const unsignedLink = await getSupabasePublicUrl('documents/unsigned.pdf');
         if (unsignedLink) {
           setDocStatus('unsigned');
           setSignedDocLink(null);
           return;
         }
       } catch (err) {
-        if (!(err.response && err.response.data && err.response.data.error_summary && err.response.data.error_summary.startsWith('path/not_found'))) {
-          console.error('Ошибка получения temporary link для unsigned.pdf:', err.response ? err.response.data : err.message);
-        }
+        console.error('Ошибка получения ссылки для unsigned.pdf:', err.message);
       }
       setDocStatus('none');
       setSignedDocLink(null);
     }
     checkDocStatus();
   }, []);
-  // При монтировании проверяем, есть ли подпись в Dropbox
-  // При монтировании страницы пытаемся восстановить подпись из localStorage или Dropbox
+  // При монтировании проверяем, есть ли подпись в Supabase Storage
+  // При монтировании страницы пытаемся восстановить подпись из localStorage или Supabase Storage
   useEffect(() => {
     async function restoreSignature() {
       const local = localStorage.getItem('signatureDataUrl');
@@ -84,10 +78,9 @@ function SignDocumentPage() {
         setSignatureLoaded(true);
         return;
       }
-      // Если нет в localStorage — пробуем из Dropbox
+      // Если нет в localStorage — пробуем из Supabase Storage
       try {
-        const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-        const link = await getDropboxShareableLink('signatures/signature.png', accessToken);
+        const link = await getSupabasePublicUrl('signatures/signature.png');
         if (link) {
           const res = await fetch(link);
           const blob = await res.blob();
@@ -139,32 +132,30 @@ useEffect(() => {
       alert('Имя файла не задано!');
       return;
     }
-    // Удалить запрещённые символы для Dropbox
+    // Удалить запрещённые символы для Supabase Storage
     newFileName = newFileName.replace(/[\\/:*?"<>|]/g, '').trim();
     // Получить расширение исходного файла
     const ext = file.name.split('.').pop();
     const finalFileName = `${newFileName}.${ext}`;
     setFile(new File([file], finalFileName, { type: file.type }));
     setCurrentUnsignedDoc(null); // сбросить текущий документ
-    // Сохраняем документ в Dropbox с пользовательским именем
+    // Сохраняем документ в Supabase Storage с пользовательским именем
     try {
-      const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-      await createDropboxFolder('/documents/unsigned', accessToken);
-      await saveDocumentToDropbox(file, `/documents/unsigned/${finalFileName}`, accessToken);
+      await createSupabaseFolder('documents/unsigned');
+      await saveDocumentToSupabase(file, `documents/unsigned/${finalFileName}`);
       // Обновить список
-      const unsigned = await listDropboxFiles('/documents/unsigned', accessToken);
+      const unsigned = await listSupabaseFiles('documents/unsigned');
       setUnsignedDocs(unsigned.filter(f => f['.tag'] === 'file'));
     } catch (err) {
-      alert('Ошибка загрузки документа в Dropbox');
+      alert('Ошибка загрузки документа в Supabase Storage');
     }
   };
 
   const handleDeleteSignature = async () => {
     if (window.confirm('Вы уверены, что хотите удалить подпись? Это действие нельзя отменить.')) {
       try {
-        const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-        // Удаляем подпись из Dropbox
-        await deleteDocumentFromDropbox('/signatures/signature.png', accessToken);
+        // Удаляем подпись из Supabase Storage
+        await deleteDocumentFromSupabase('signatures/signature.png');
         // Очищаем локальное состояние
         setSignatureFile(null);
         setSignatureImg(null);
@@ -195,15 +186,14 @@ useEffect(() => {
       setSignatureImg(dataUrl);
       localStorage.setItem('signatureDataUrl', dataUrl);
       
-      // Сохраняем подпись в Dropbox
+      // Сохраняем подпись в Supabase Storage
       try {
-        const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-        await createDropboxFolder('/signatures', accessToken);
-        await saveDocumentToDropbox(file, '/signatures/signature.png', accessToken);
+        await createSupabaseFolder('signatures');
+        await saveDocumentToSupabase(file, 'signatures/signature.png');
         setSignatureLoaded(true);
         alert('Подпись успешно сохранена!');
       } catch (err) {
-        console.error('Ошибка загрузки подписи в Dropbox:', err);
+        console.error('Ошибка загрузки подписи в Supabase Storage:', err);
         alert('Ошибка при сохранении подписи. Пожалуйста, попробуйте снова.');
       }
     };
@@ -256,11 +246,10 @@ useEffect(() => {
               return;
             }
             const finalFileName = `${name}.${uploadFileExt}`;
-            const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-            await createDropboxFolder('/documents/unsigned', accessToken);
-            await saveDocumentToDropbox(file, `/documents/unsigned/${finalFileName}`, accessToken);
+            await createSupabaseFolder('documents/unsigned');
+            await saveDocumentToSupabase(file, `documents/unsigned/${finalFileName}`);
             // Обновить списки
-            const unsigned = await listDropboxFiles('/documents/unsigned', accessToken);
+            const unsigned = await listSupabaseFiles('documents/unsigned');
             setUnsignedDocs(unsigned.filter(f => f['.tag'] === 'file'));
             setShowUploadForm(false);
             setFile(null);
@@ -273,7 +262,7 @@ useEffect(() => {
               <input type="text" value={uploadFileName} onChange={e => setUploadFileName(e.target.value)} />
               .{uploadFileExt}
             </div>
-            <button type="submit">Сохранить в Dropbox</button>
+            <button type="submit">Сохранить в Supabase Storage</button>
             <button type="button" style={{marginLeft:8}} onClick={() => { setShowUploadForm(false); setFile(null); }}>Отмена</button>
           </form>
         )}
@@ -355,8 +344,7 @@ useEffect(() => {
                   <td>
                     <button onClick={async () => {
                       // Открыть для подписания: загружаем файл и отображаем в интерфейсе
-                      const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-                      const link = await getDropboxShareableLink(doc.path_display, accessToken);
+                      const link = await getSupabasePublicUrl(doc.path_display);
                       // Загружаем файл для подписания (PDF/JPG/PNG)
                       const response = await fetch(link);
                       const blob = await response.blob();
@@ -378,9 +366,8 @@ useEffect(() => {
             <li key={doc.id || doc.name}>
               <a href="#" onClick={async (e) => {
                 e.preventDefault();
-                const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
                 try {
-                  const link = await getDropboxShareableLink(doc.path_display, accessToken);
+                  const link = await getSupabasePublicUrl(doc.path_display);
                   window.open(link, '_blank');
                 } catch (err) {
                   alert('Ошибка получения ссылки на файл');
@@ -389,8 +376,7 @@ useEffect(() => {
               {' '}
               <button style={{marginLeft:8}} onClick={async () => {
                 if (!window.confirm(`Удалить файл "${doc.name}"? Это действие необратимо!`)) return;
-                const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-                await deleteDocumentFromDropbox(doc.path_display, accessToken);
+                await deleteDocumentFromSupabase(doc.path_display);
                 setSignedDocs(signedDocs.filter(f => f.id !== doc.id && f.name !== doc.name));
               }}>Удалить</button>
             </li>
@@ -480,43 +466,42 @@ useEffect(() => {
               alert('Неизвестный формат файла для подписания!');
               return;
             }
-            const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-            console.log('[SIGN] Сохраняем подписанный файл в Dropbox:', signedBlob);
-            await createDropboxFolder('/documents/signed', accessToken);
+            console.log('[SIGN] Сохраняем подписанный файл в Supabase Storage:', signedBlob);
+            await createSupabaseFolder('documents/signed');
             // Запросить имя файла у пользователя
             let newFileName = window.prompt('Введите имя для подписанного файла (без расширения):', currentUnsignedDoc.name.replace(/\.[^.]+$/, ''));
             if (!newFileName) {
               alert('Имя файла не задано!');
               return;
             }
-            // Удалить запрещённые символы для Dropbox
+            // Удалить запрещённые символы для Supabase Storage
             newFileName = newFileName.replace(/[\\/:*?"<>|]/g, '').trim();
             // Получить расширение исходного файла
             const ext = currentUnsignedDoc.name.split('.').pop();
             const finalFileName = `${newFileName}.${ext}`;
             // 1. Сохраняем подписанный файл
             try {
-              await saveDocumentToDropbox(signedBlob, `/documents/signed/${finalFileName}`, accessToken);
-              console.log('[SIGN] Файл успешно сохранён в Dropbox:', `/documents/signed/${finalFileName}`);
+              await saveDocumentToSupabase(signedBlob, `documents/signed/${finalFileName}`);
+              console.log('[SIGN] Файл успешно сохранён в Supabase Storage:', `documents/signed/${finalFileName}`);
             } catch (err) {
-              console.error('[SIGN][ERROR] Ошибка при сохранении файла в Dropbox:', err);
-              alert('Ошибка при сохранении подписанного файла в Dropbox!');
+              console.error('[SIGN][ERROR] Ошибка при сохранении файла в Supabase Storage:', err);
+              alert('Ошибка при сохранении подписанного файла в Supabase Storage!');
               return;
             }
             // 2. Удаляем исходный неподписанный файл
             try {
-              await deleteDocumentFromDropbox(currentUnsignedDoc.path_display, accessToken);
-              console.log('[SIGN] Исходный неподписанный файл удалён из Dropbox:', currentUnsignedDoc.path_display);
+              await deleteDocumentFromSupabase(currentUnsignedDoc.path_display);
+              console.log('[SIGN] Исходный неподписанный файл удалён из Supabase Storage:', currentUnsignedDoc.path_display);
             } catch (err) {
-              console.error('[SIGN][ERROR] Ошибка при удалении исходного файла из Dropbox:', err);
-              alert('Ошибка при удалении исходного файла из Dropbox!');
+              console.error('[SIGN][ERROR] Ошибка при удалении исходного файла из Supabase Storage:', err);
+              alert('Ошибка при удалении исходного файла из Supabase Storage!');
               return;
             }
             // 3. Обновить списки
             try {
-              const unsigned = await listDropboxFiles('/documents/unsigned', accessToken);
+              const unsigned = await listSupabaseFiles('documents/unsigned');
               setUnsignedDocs(unsigned.filter(f => f['.tag'] === 'file'));
-              const signed = await listDropboxFiles('/documents/signed', accessToken);
+              const signed = await listSupabaseFiles('documents/signed');
               setSignedDocs(signed.filter(f => f['.tag'] === 'file'));
               console.log('[SIGN] Списки документов обновлены:', {
                 unsigned,

@@ -1,6 +1,6 @@
 // Несущественный комментарий для теста git-коммита
 import React, { useState, useEffect } from 'react';
-import { saveDocumentToDropbox, getDropboxShareableLink, deleteDocumentFromDropbox, listDropboxFiles, createDropboxFolder } from './utils/documentGenerator';
+import { saveDocumentToSupabase, getSupabasePublicUrl, deleteDocumentFromSupabase, listSupabaseFiles, createSupabaseFolder } from './utils/documentGenerator';
 import './SignDocumentPage.css';
 
 export default function SignDocumentUploadPage() {
@@ -15,11 +15,10 @@ export default function SignDocumentUploadPage() {
   useEffect(() => {
     async function fetchLists() {
       setLoadingDocs(true);
-      const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-      await createDropboxFolder('/documents/unsigned', accessToken);
-      await createDropboxFolder('/documents/signed', accessToken);
-      const unsigned = await listDropboxFiles('/documents/unsigned', accessToken);
-      const signed = await listDropboxFiles('/documents/signed', accessToken);
+      await createSupabaseFolder('documents/unsigned');
+      await createSupabaseFolder('documents/signed');
+      const unsigned = await listSupabaseFiles('documents/unsigned');
+      const signed = await listSupabaseFiles('documents/signed');
       setUnsignedDocs(unsigned.filter(f => f['.tag'] === 'file'));
       setSignedDocs(signed.filter(f => f['.tag'] === 'file'));
       setLoadingDocs(false);
@@ -51,10 +50,9 @@ export default function SignDocumentUploadPage() {
               return;
             }
             const finalFileName = `${name}.${uploadFileExt}`;
-            const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-            await createDropboxFolder('/documents/unsigned', accessToken);
-            await saveDocumentToDropbox(file, `/documents/unsigned/${finalFileName}`, accessToken);
-            const unsigned = await listDropboxFiles('/documents/unsigned', accessToken);
+            await createSupabaseFolder('documents/unsigned');
+            await saveDocumentToSupabase(file, `documents/unsigned/${finalFileName}`);
+            const unsigned = await listSupabaseFiles('documents/unsigned');
             setUnsignedDocs(unsigned.filter(f => f['.tag'] === 'file'));
             setShowUploadForm(false);
             setFile(null);
@@ -67,7 +65,7 @@ export default function SignDocumentUploadPage() {
               <input type="text" value={uploadFileName} onChange={e => setUploadFileName(e.target.value)} />
               .{uploadFileExt}
             </div>
-            <button type="submit">Сохранить в Dropbox</button>
+            <button type="submit">Сохранить в Supabase</button>
             <button type="button" style={{marginLeft:8}} onClick={() => { setShowUploadForm(false); setFile(null); }}>Отмена</button>
           </form>
         )}
@@ -94,9 +92,8 @@ export default function SignDocumentUploadPage() {
             <li key={doc.id || doc.name}>
               <a href="#" onClick={async (e) => {
                 e.preventDefault();
-                const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
                 try {
-                  const link = await getDropboxShareableLink(doc.path_display, accessToken);
+                  const link = await getSupabasePublicUrl(doc.path_display);
                   window.open(link, '_blank');
                 } catch (err) {
                   alert('Ошибка получения ссылки на файл');
@@ -105,8 +102,7 @@ export default function SignDocumentUploadPage() {
               {' '}
               <button style={{marginLeft:8}} onClick={async () => {
                 if (!window.confirm(`Удалить файл "${doc.name}"? Это действие необратимо!`)) return;
-                const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-                await deleteDocumentFromDropbox(doc.path_display, accessToken);
+                await deleteDocumentFromSupabase(doc.path_display);
                 setSignedDocs(signedDocs.filter(f => f.id !== doc.id && f.name !== doc.name));
               }}>Удалить</button>
             </li>

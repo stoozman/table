@@ -1,5 +1,6 @@
 import { Document, Packer, Paragraph, Table, TableCell, TableRow, BorderStyle, WidthType, AlignmentType, HeadingLevel, TableLayoutType, ImageRun } from 'docx';
 import axios from 'axios';
+import supabase from '../supabase';
 
 // Создание строк таблицы
 const createTableRow = (cells, isHeader = false) => {
@@ -144,130 +145,40 @@ function toAsciiJson(obj) {
     });
 }
 
-export async function saveDocumentToDropbox(fileBlob, path, accessToken) {
-    // Убираем начальный слеш, если он есть
-    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-    const dropboxPath = `/${cleanPath}`;
-    console.log('[DROPBOX UPLOAD] path:', dropboxPath);
-    try {
-        const response = await axios.post(
-            'https://content.dropboxapi.com/2/files/upload',
-            fileBlob,
-            {
-                headers: {
-                    Authorization: `Bearer ${accessToken}`,
-                    'Content-Type': 'application/octet-stream',
-                    'Dropbox-API-Arg': toAsciiJson({
-                        path: dropboxPath,
-                        mode: 'overwrite'
-                    })
-                }
-            }
-        );
-        return response.data;
-    } catch (error) {
-        if (error.response && error.response.status === 409) {
-            console.error('[DROPBOX UPLOAD] 409 Conflict! path:', dropboxPath, 'error:', error.response.data);
-            alert('Ошибка Dropbox: 409 Conflict при загрузке файла!\n' +
-                  'Путь: ' + dropboxPath + '\n' +
-                  'Возможно, файл заблокирован, путь некорректен или есть конфликт версий.');
-        } else {
-            console.error('[DROPBOX UPLOAD] Ошибка загрузки файла:', error.response ? error.response.data : error.message);
-        }
-        throw error;
-    }
+// Удалены все функции Dropbox и их импорты. Используйте Supabase аналоги ниже.
+
+// --- SUPABASE STORAGE ANALOGS ---
+
+// Сохранить файл в Supabase Storage
+export async function saveDocumentToSupabase(file, path, bucket = 'documents') {
+    // path: путь внутри бакета, например 'unsigned/filename.pdf'
+    const { data, error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true });
+    if (error) throw error;
+    return data;
 }
 
-export async function getDropboxShareableLink(filePath, accessToken) {
-    // Убираем начальный слеш, если он есть
-    const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
-
-    try {
-        // Получаем temporary link
-        const response = await axios.post(
-            'https://api.dropboxapi.com/2/files/get_temporary_link',
-            { path: `/${cleanPath}` },
-            {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-        return response.data.link;
-    } catch (error) {
-        console.error('Ошибка получения temporary link из Dropbox:', error.response ? error.response.data : error.message);
-        throw new Error('Не удалось получить временную ссылку Dropbox');
-    }
+// Получить публичную ссылку на файл в Supabase Storage
+export function getSupabasePublicUrl(path, bucket = 'documents') {
+    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+    return data.publicUrl;
 }
 
-
-export async function createDropboxFolder(path, accessToken) {
-    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    try {
-        await axios.post(
-            'https://api.dropboxapi.com/2/files/create_folder_v2',
-            { path: cleanPath, autorename: false },
-            {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-    } catch (error) {
-        // Если папка уже есть — не ошибка
-        if (!(error.response && error.response.data && error.response.data.error_summary && error.response.data.error_summary.startsWith('path/conflict/folder'))) {
-            console.error('Ошибка создания папки Dropbox:', error.response ? error.response.data : error.message);
-        }
-    }
+// Удалить файл из Supabase Storage
+export async function deleteDocumentFromSupabase(path, bucket = 'documents') {
+    const { error } = await supabase.storage.from(bucket).remove([path]);
+    if (error) throw error;
+    return true;
 }
 
-export async function listDropboxFiles(path, accessToken) {
-    // Получить список файлов в папке Dropbox
-    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    try {
-        const response = await axios.post(
-            'https://api.dropboxapi.com/2/files/list_folder',
-            {
-                path: cleanPath === '/' ? '' : cleanPath,
-                recursive: false
-            },
-            {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-        return response.data.entries;
-    } catch (error) {
-        console.error('Ошибка получения списка файлов Dropbox:', error.response ? error.response.data : error.message);
-        return [];
-    }
+// Получить список файлов в папке Supabase Storage
+export async function listSupabaseFiles(folder = '', bucket = 'documents') {
+    const { data, error } = await supabase.storage.from(bucket).list(folder, { limit: 100, offset: 0 });
+    if (error) throw error;
+    return data;
 }
 
-export async function deleteDocumentFromDropbox(filePath, accessToken) {
-    // Убираем начальный слеш, если он есть
-    const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
-
-    try {
-        const response = await axios.post(
-            'https://api.dropboxapi.com/2/files/delete_v2',
-            { 
-                path: `/${cleanPath}`
-            },
-            { 
-                headers: { 
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                } 
-            }
-        );
-        
-        return true; // Возвращаем true, если удаление успешно
-    } catch (error) {
-        console.error('Ошибка удаления файла из Dropbox:', error.response ? error.response.data : error.message);
-        return false; // Возвращаем false в случае ошибки
-    }
+// Создать "папку" в Supabase Storage (фактически, просто заглушка)
+export async function createSupabaseFolder(folder, bucket = 'documents') {
+    // В Supabase Storage папки создаются автоматически при загрузке файла
+    return true;
 }

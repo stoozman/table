@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { saveDocumentToDropbox, getDropboxShareableLink, deleteDocumentFromDropbox, listDropboxFiles, createDropboxFolder } from './utils/documentGenerator';
+import { saveDocumentToSupabase, getSupabasePublicUrl, deleteDocumentFromSupabase, listSupabaseFiles, createSupabaseFolder } from './utils/documentGenerator';
 import { PDFDocument } from 'pdf-lib';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
@@ -25,9 +25,8 @@ export default function SignDocumentSignPage() {
   useEffect(() => {
     async function fetchLists() {
       setLoadingDocs(true);
-      const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-      await createDropboxFolder('/documents/unsigned', accessToken);
-      const unsigned = await listDropboxFiles('/documents/unsigned', accessToken);
+      await createSupabaseFolder('/documents/unsigned');
+      const unsigned = await listSupabaseFiles('/documents/unsigned');
       setUnsignedDocs(unsigned.filter(f => f['.tag'] === 'file'));
       setLoadingDocs(false);
     }
@@ -47,8 +46,7 @@ export default function SignDocumentSignPage() {
         return;
       }
       try {
-        const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-        const link = await getDropboxShareableLink('signatures/signature.png', accessToken);
+        const link = await getSupabasePublicUrl('signatures/signature.png');
         if (link) {
           setSignatureImg(link);
           setSignatureLoaded(true);
@@ -74,9 +72,8 @@ export default function SignDocumentSignPage() {
       setSignatureImg(dataUrl);
       localStorage.setItem('signatureDataUrl', dataUrl);
       try {
-        const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-        await createDropboxFolder('/signatures', accessToken);
-        await saveDocumentToDropbox(file, '/signatures/signature.png', accessToken);
+        await createSupabaseFolder('/signatures');
+        await saveDocumentToSupabase(file, '/signatures/signature.png');
         setSignatureLoaded(true);
         alert('Подпись успешно сохранена!');
       } catch (err) {
@@ -89,8 +86,7 @@ export default function SignDocumentSignPage() {
   const handleDeleteSignature = async () => {
     if (window.confirm('Вы уверены, что хотите удалить подпись? Это действие нельзя отменить.')) {
       try {
-        const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-        await deleteDocumentFromDropbox('/signatures/signature.png', accessToken);
+        await deleteDocumentFromSupabase('/signatures/signature.png');
         setSignatureFile(null);
         setSignatureImg(null);
         setSignatureLoaded(false);
@@ -134,8 +130,7 @@ export default function SignDocumentSignPage() {
                   <td>{doc.name}</td>
                   <td>
                     <button onClick={async () => {
-                      const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-                      const link = await getDropboxShareableLink(doc.path_display, accessToken);
+                      const link = await getSupabasePublicUrl(doc.path_display);
                       const response = await fetch(link);
                       const blob = await response.blob();
                       setFile(new File([blob], doc.name, { type: blob.type }));
@@ -278,8 +273,7 @@ export default function SignDocumentSignPage() {
               alert('Неизвестный формат файла для подписания!');
               return;
             }
-            const accessToken = process.env.REACT_APP_DROPBOX_ACCESS_TOKEN;
-            await createDropboxFolder('/documents/signed', accessToken);
+            await createSupabaseFolder('/documents/signed');
             let newFileName = window.prompt('Введите имя для подписанного файла (без расширения):', currentUnsignedDoc.name.replace(/\.[^.]+$/, ''));
             if (!newFileName) {
               alert('Имя файла не задано!');
@@ -289,19 +283,19 @@ export default function SignDocumentSignPage() {
             const ext = currentUnsignedDoc.name.split('.').pop();
             const finalFileName = `${newFileName}.${ext}`;
             try {
-              await saveDocumentToDropbox(signedBlob, `/documents/signed/${finalFileName}`, accessToken);
+              await saveDocumentToSupabase(signedBlob, `/documents/signed/${finalFileName}`);
             } catch (err) {
-              alert('Ошибка при сохранении подписанного файла в Dropbox!');
+              alert('Ошибка при сохранении подписанного файла в Supabase Storage!');
               return;
             }
             try {
-              await deleteDocumentFromDropbox(currentUnsignedDoc.path_display, accessToken);
+              await deleteDocumentFromSupabase(currentUnsignedDoc.path_display);
             } catch (err) {
-              alert('Ошибка при удалении исходного файла из Dropbox!');
+              alert('Ошибка при удалении исходного файла из Supabase Storage!');
               return;
             }
             try {
-              const unsigned = await listDropboxFiles('/documents/unsigned', accessToken);
+              const unsigned = await listSupabaseFiles('/documents/unsigned');
               setUnsignedDocs(unsigned.filter(f => f['.tag'] === 'file'));
             } catch (err) {
               alert('Ошибка при обновлении списков документов!');
