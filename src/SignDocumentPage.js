@@ -7,7 +7,7 @@ import 'react-pdf/dist/esm/Page/TextLayer.css';
 import './SignDocumentPage.css';
 
 // Используем локальный pdf.worker.js из node_modules
-pdfjs.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL}/pdf.worker.min.js`;
+pdfjs.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL}/pdf.worker.mjs`;
 // Для create-react-app pdf.worker.min.js нужно скопировать в public/ вручную или через postinstall
 
 function SignDocumentPage() {

@@ -12,6 +12,7 @@ import AuthPage from './AuthPage';
 import UserDashboard from './UserDashboard';
 import SignDocumentUploadPage from './SignDocumentUploadPage';
 import SignDocumentSignPage from './SignDocumentSignPage';
+import { ProductRawMaterialLinker as OCRUpload, ProductRawMaterialSearch } from './pages/OCRUpload';
 
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
@@ -293,6 +294,12 @@ function AppContent() {
                 <Link to="/sign-document/sign">
                     <button>Подписать документ</button>
                 </Link>
+                <Link to="/ocr-upload">
+                    <button>Связи продукт — сырьё</button>
+                </Link>
+                <Link to="/product-raw-search">
+                    <button>Поиск сырья по продукту</button>
+                </Link>
                 {/* <Link to="/sign-document">
                     <button>Подписать документ</button>
                 </Link> */}
@@ -377,6 +384,8 @@ function AppContent() {
                 <Route path="/orders" element={<OrdersPage />} />
                 <Route path="/sign-document/upload" element={<SignDocumentUploadPage />} />
                 <Route path="/sign-document/sign" element={<SignDocumentSignPage />} />
+                <Route path="/ocr-upload" element={<OCRUpload />} />
+                <Route path="/product-raw-search" element={<ProductRawMaterialSearch />} />
             </Routes>
         </div>
     );
