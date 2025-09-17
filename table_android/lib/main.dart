@@ -9,6 +9,7 @@ import 'screens/raw_materials_screen.dart';
 import 'screens/qr_scan_screen.dart';
 import 'screens/raw_material_details_screen.dart';
 import 'screens/photo_upload_screen.dart';
+import 'screens/live_color_check_screen.dart';
 import 'dart:convert';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -139,6 +140,22 @@ class StartScreen extends StatelessWidget {
                   ),
                 ),
                 child: const Text('Загрузить фото (датасет)', style: TextStyle(fontSize: 18)),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const LiveColorCheckScreen()),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: const Text('Проверка цвета (камера)', style: TextStyle(fontSize: 18)),
               ),
             ],
           ),

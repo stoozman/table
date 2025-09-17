@@ -7,7 +7,8 @@ plugins {
 
 android {
     namespace = "com.example.table_android"
-    compileSdk = flutter.compileSdkVersion
+    // Use explicit compileSdk to satisfy camera_android requirement
+    compileSdk = 36
     // Указываем версию NDK, совместимую с плагинами
     ndkVersion = "27.0.12077973"
 
@@ -26,6 +27,7 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
+        // Target can remain as provided by Flutter; compileSdk is what matters for plugins
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

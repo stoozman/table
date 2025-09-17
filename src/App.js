@@ -13,6 +13,7 @@ import UserDashboard from './UserDashboard';
 import SignDocumentUploadPage from './SignDocumentUploadPage';
 import SignDocumentSignPage from './SignDocumentSignPage';
 import { ProductRawMaterialLinker as OCRUpload, ProductRawMaterialSearch } from './pages/OCRUpload';
+import LiveColorCheck from './pages/LiveColorCheck';
 
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseKey = process.env.REACT_APP_SUPABASE_KEY;
@@ -300,6 +301,9 @@ function AppContent() {
                 <Link to="/product-raw-search">
                     <button>Поиск сырья по продукту</button>
                 </Link>
+                <Link to="/live-check">
+                    <button>Проверка цвета (камера)</button>
+                </Link>
                 {/* <Link to="/sign-document">
                     <button>Подписать документ</button>
                 </Link> */}
@@ -386,6 +390,7 @@ function AppContent() {
                 <Route path="/sign-document/sign" element={<SignDocumentSignPage />} />
                 <Route path="/ocr-upload" element={<OCRUpload />} />
                 <Route path="/product-raw-search" element={<ProductRawMaterialSearch />} />
+                <Route path="/live-check" element={<LiveColorCheck />} />
             </Routes>
         </div>
     );
