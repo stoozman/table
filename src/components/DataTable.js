@@ -209,27 +209,68 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
 
   // Normalize documents field: may be an array, or a JSON-stringified array
   const normalizeDocuments = (val) => {
-    if (!val) return [];
+    if (!val && val !== 0) return [];
     if (Array.isArray(val)) return val;
     if (typeof val === 'string') {
       let s = val.trim();
       if (!s || s === '[]') return [];
-      // remove surrounding quotes/brackets
-      s = s.replace(/^[\[\]\s"']+|[\[\]\s"']+$/g, '');
-      // Try parse JSON
+
+      // Unescape common CSV-style doubled quotes and backslash escapes first
+      s = s.replace(/""/g, '"').replace(/\\"/g, '"').replace(/\\'/g, "'");
+
+      // Remove surrounding single/double quotes if present
+      if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+        s = s.slice(1, -1).trim();
+      }
+
+      // Try to parse JSON now that we've unescaped common CSV quoting
       try {
         const parsed = JSON.parse(s);
         if (Array.isArray(parsed)) return parsed;
         if (parsed && typeof parsed === 'object') return [parsed];
       } catch (e) {
-        // fallback: try to split simple bracket list
-        if (s.startsWith('[') && s.endsWith(']')) {
-          const inner = s.slice(1, -1);
-          const parts = inner.split(',').map(p => p.replace(/^\s*["']?|["']?\s*$/g, '').trim()).filter(Boolean);
-          return parts.map(p => ({ name: p.replace(/^[\[\]\s"']+|[\[\]\s"']+$/g, ''), link: p.replace(/^[\[\]\s"']+|[\[\]\s"']+$/g, '') }));
+        // ignore and continue to heuristics
+      }
+
+      // If there's a JSON-like object substring, try to extract and parse it
+      const objMatch = s.match(/\{.*\}/);
+      if (objMatch) {
+        try {
+          const parsed = JSON.parse(objMatch[0]);
+          if (parsed && typeof parsed === 'object') return [parsed];
+        } catch (e) {
+          // continue
         }
       }
-      return [{ name: s.replace(/^[\[\]\s"']+|[\[\]\s"']+$/g, ''), link: s.replace(/^[\[\]\s"']+|[\[\]\s"']+$/g, '') }];
+
+      // If still looks like a bracketed list, try splitting into object-like parts
+      if (s.startsWith('[') && s.endsWith(']')) {
+        const inner = s.slice(1, -1);
+        // split on '},{' boundaries to try to recover multiple JSON objects
+        const parts = inner.split(/},\s*\{/).map((p, i, arr) => {
+          if (arr.length === 1) return p.trim();
+          if (i === 0) return p + '}';
+          if (i === arr.length - 1) return '{' + p;
+          return '{' + p + '}';
+        });
+        const results = [];
+        for (const part of parts) {
+          const trimmed = part.trim();
+          try {
+            results.push(JSON.parse(trimmed));
+            continue;
+          } catch (e) {
+            // fallback to treat as simple name/link
+            const cleaned = trimmed.replace(/^[\[\]\s"']+|[\[\]\s"']+$/g, '');
+            results.push({ name: cleaned, link: cleaned });
+          }
+        }
+        if (results.length > 0) return results;
+      }
+
+      // Final fallback: return a single document-like object with cleaned text
+      const cleaned = s.replace(/^[\[\]\s"']+|[\[\]\s"']+$/g, '');
+      return [{ name: cleaned, link: cleaned }];
     }
     // fallback
     return [{ name: String(val), link: String(val) }];
@@ -242,18 +283,19 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
         const newItem = { ...item };
         newItem.act_link = normalizeLink(item.act_link);
         newItem.documents = normalizeDocuments(item.documents);
-        // (debug removed)
+        // Precompute a display string for documents (names joined) to avoid any raw-array rendering
+        try {
+          const docsArr = Array.isArray(newItem.documents) ? newItem.documents : normalizeDocuments(newItem.documents);
+          newItem._displayDocumentsText = docsArr.map(d => d?.name || d?.link || String(d)).join(', ');
+        } catch (e) {
+          newItem._displayDocumentsText = '';
+        }
         return newItem;
       } catch (e) {
         return item;
       }
     });
   }, [filteredData]);
-
-  
-
-
-  // Очистка имени файла (транслитерация и замена недопустимых символов)
   const cleanFileName = (name) => {
     const transliterate = (str) => {
       const ru = {
@@ -342,7 +384,8 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   const handleActClick = async (item) => {
     try {
       const docBlob = await generateDocument(item);
-      const fileName = cleanFileName(`${item.name}_${item.batch_number}.docx`);
+      // Use timestamp to avoid stale-cache on same URL
+      const fileName = cleanFileName(`${item.name}_${item.batch_number}_${Date.now()}.docx`);
       const uploadPath = `acts/${fileName}`;
       await saveDocumentToSupabase(docBlob, uploadPath);
       const publicUrl = getSupabasePublicUrl(uploadPath);
@@ -387,9 +430,14 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   // Удаление акта
   const handleActDelete = async (item) => {
     try {
-      const fileName = cleanFileName(`${item.name}_${item.batch_number}.docx`);
-      const uploadPath = `acts/${fileName}`;
-      await deleteDocumentFromSupabase(uploadPath);
+      // Parse path from existing public URL (supports timestamped names)
+      const link = item.act_link || '';
+      // Expected public URL contains '/documents/<path>'
+      const idx = link.indexOf('/documents/');
+      if (idx !== -1) {
+        const path = link.substring(idx + '/documents/'.length);
+        await deleteDocumentFromSupabase(path);
+      }
       const { data: updatedData, error } = await supabase
         .from(table)
         .update({ act_link: null })

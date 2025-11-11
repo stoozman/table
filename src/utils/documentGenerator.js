@@ -2,6 +2,46 @@ import { Document, Packer, Paragraph, Table, TableCell, TableRow, BorderStyle, W
 import axios from 'axios';
 import supabase from '../supabase';
 
+// Аккуратное форматирование полей для документа (избегаем отображения [] и сырых JSON-строк)
+const formatDocField = (v) => {
+    if (v == null) return '-';
+    // Если массив
+    if (Array.isArray(v)) {
+        if (v.length === 0) return '-';
+        // Преобразуем элементы в строки
+        return v.map(x => {
+            if (x == null) return '';
+            if (typeof x === 'object') {
+                // попытаемся взять понятное поле
+                return x.name || x.link || JSON.stringify(x);
+            }
+            return String(x);
+        }).filter(Boolean).join(', ');
+    }
+    // Строки: пробуем распарсить JSON, иначе чистим скобки
+    let s = String(v).trim();
+    if (!s) return '-';
+    // Попробуем распарсить JSON (например, '[]', '["a","b"]').
+    try {
+        const parsed = JSON.parse(s);
+        return formatDocField(parsed);
+    } catch (_) {
+        // не JSON — продолжаем
+    }
+    // Если выглядит как массив в строке
+    if (s === '[]') return '-';
+    if (s.startsWith('[') && s.endsWith(']')) {
+        const inner = s.slice(1, -1).trim();
+        if (!inner) return '-';
+        const parts = inner
+            .split(',')
+            .map(p => p.replace(/^\s*["']?|["']?\s*$/g, '').trim())
+            .filter(Boolean);
+        return parts.length ? parts.join(', ') : '-';
+    }
+    return s;
+};
+
 // Создание строк таблицы
 const createTableRow = (cells, isHeader = false) => {
     return new TableRow({
@@ -11,7 +51,7 @@ const createTableRow = (cells, isHeader = false) => {
                 width: { size: cellWidths[index], type: WidthType.PERCENTAGE },
                 children: [
                     new Paragraph({
-                        text: text || '-',
+                        text: formatDocField(text),
                         bold: isHeader,
                         alignment: AlignmentType.CENTER,
                         spacing: { before: 50, after: 50 }
@@ -104,8 +144,8 @@ export async function generateDocument(data) {
                     createTableRow([
                         "2.",
                         "Показатели безопасности",
-                        data.inspected_metrics || "-",
-                        data.investigation_result || "-"
+                        formatDocField(data.inspected_metrics),
+                        formatDocField(data.investigation_result)
                     ])
                 ]
             })
