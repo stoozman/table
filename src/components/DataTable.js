@@ -81,22 +81,177 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     }
   };
 
-  const renderList = (value) => {
-    let arr = [];
-    try {
-      if (typeof value === 'string') {
-        arr = JSON.parse(value);
-        if (!Array.isArray(arr)) {
-          arr = [value];
-        }
-      } else if (Array.isArray(value)) {
-        arr = value;
-      }
-    } catch (e) {
-      arr = Array.isArray(value) ? value : [value];
+  const formatScalar = (v) => {
+    // Handle null/undefined
+    if (v == null) return '';
+
+    // If it's already an array, join nicely. If items are objects, prefer their `name`/`link`.
+    if (Array.isArray(v)) {
+      if (v.length === 0) return '';
+      if (typeof v[0] === 'object') return v.map(it => it?.name || it?.link || JSON.stringify(it)).join(', ');
+      return v.join(', ');
     }
-    return arr.map((item, idx) => <div key={idx}>{item}</div>);
+
+    // Work with trimmed string form
+    let s = String(v).trim();
+    if (!s) return '';
+
+    // Common CSV escaping: fields are quoted and inner quotes are doubled: "" -> "
+    // Strip single outer quotes if present
+    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+      s = s.slice(1, -1).trim();
+    }
+
+    // Replace doubled double-quotes (CSV escaping) with a single double-quote
+    if (s.includes('""')) {
+      s = s.replace(/""/g, '"');
+    }
+
+    // Normalize newlines
+    s = s.replace(/\r?\n/g, ' ');
+
+    // Try to parse JSON. Many DB exports arrive as JSON-encoded strings.
+    try {
+      const parsed = JSON.parse(s);
+      if (parsed == null) return '';
+      if (Array.isArray(parsed)) {
+        if (parsed.length === 0) return '';
+        if (typeof parsed[0] === 'object') return parsed.map(it => it?.name || it?.link || JSON.stringify(it)).join(', ');
+        return parsed.join(', ');
+      }
+      if (typeof parsed === 'object') {
+        return parsed.name || Object.values(parsed).join(', ');
+      }
+      return String(parsed);
+    } catch (e) {
+      // fallthrough to string heuristics below
+    }
+
+    // If it looks like an array literal but JSON.parse failed (escaped quotes etc.),
+    // strip brackets and split on commas, then unquote parts.
+    if (s.startsWith('[') && s.endsWith(']')) {
+      const inner = s.slice(1, -1);
+      const parts = inner
+        .split(',')
+        .map(part => part.replace(/^\s*["']?|["']?\s*$/g, '').trim())
+        .filter(Boolean);
+      return parts.join(', ');
+    }
+
+    return s;
   };
+
+  // Normalize link fields that may be stored as arrays or JSON-encoded arrays
+  const normalizeLink = (val) => {
+    if (!val && val !== 0) return null;
+
+    // If it's already an array, prefer first string-like or object's link/name
+    if (Array.isArray(val)) {
+      if (val.length === 0) return null;
+      const first = val.find(x => typeof x === 'string') || val[0];
+      if (typeof first === 'string') return first;
+      if (typeof first === 'object' && first != null) return first.link || first.name || JSON.stringify(first);
+      return String(first);
+    }
+
+    // Work with string forms (may be JSON-encoded, CSV-escaped, or already plain URL)
+    if (typeof val === 'string') {
+      let s = val.trim();
+      if (!s) return null;
+
+      // Remove surrounding single/double quotes
+      if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+        s = s.slice(1, -1).trim();
+      }
+
+      // Unescape common CSV doubling and backslash-escapes
+  s = s.replace(/""/g, '"').replace(/\\"/g, '"').replace(/\\'/g, "'");
+
+  // Strip outer brackets/quotes leftover (e.g. '["..."]') and surrounding whitespace
+  s = s.replace(/^[\[\]\s"']+|[\[\]\s"']+$/g, '');
+
+      // If still looks like JSON (array or object), try parsing
+      if ((s.startsWith('[') && s.endsWith(']')) || (s.startsWith('{') && s.endsWith('}'))) {
+        try {
+          const parsed = JSON.parse(s);
+          if (parsed == null) return null;
+          if (Array.isArray(parsed)) {
+            if (parsed.length === 0) return null;
+            const first = parsed[0];
+            if (typeof first === 'string') return first;
+            if (typeof first === 'object' && first != null) return first.link || first.name || JSON.stringify(first);
+            return String(first);
+          }
+          if (typeof parsed === 'object') return parsed.link || parsed.name || Object.values(parsed).find(x => typeof x === 'string') || JSON.stringify(parsed);
+          return String(parsed);
+        } catch (e) {
+          // fallthrough to heuristics
+        }
+      }
+
+    // Heuristic: try to extract first URL-like substring inside brackets or the string
+    const urlMatch = s.match(/https?:\/\/\S+/i);
+    if (urlMatch) return urlMatch[0].replace(/[",\)\]\s]+$/g, '');
+
+      // If looks like bracketed list without valid JSON, strip brackets and quotes
+      if (s.startsWith('[') && s.endsWith(']')) {
+        const inner = s.slice(1, -1).trim();
+        const cleaned = inner.split(',').map(p => p.replace(/^\s*["']?|["']?\s*$/g, '').trim()).filter(Boolean);
+        if (cleaned.length > 0) return cleaned[0].replace(/^[\[\]\s"']+|[\[\]\s"']+$/g, '');
+      }
+
+      return s;
+    }
+
+    // Fallback
+    return String(val);
+  };
+
+  // Normalize documents field: may be an array, or a JSON-stringified array
+  const normalizeDocuments = (val) => {
+    if (!val) return [];
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string') {
+      let s = val.trim();
+      if (!s || s === '[]') return [];
+      // remove surrounding quotes/brackets
+      s = s.replace(/^[\[\]\s"']+|[\[\]\s"']+$/g, '');
+      // Try parse JSON
+      try {
+        const parsed = JSON.parse(s);
+        if (Array.isArray(parsed)) return parsed;
+        if (parsed && typeof parsed === 'object') return [parsed];
+      } catch (e) {
+        // fallback: try to split simple bracket list
+        if (s.startsWith('[') && s.endsWith(']')) {
+          const inner = s.slice(1, -1);
+          const parts = inner.split(',').map(p => p.replace(/^\s*["']?|["']?\s*$/g, '').trim()).filter(Boolean);
+          return parts.map(p => ({ name: p.replace(/^[\[\]\s"']+|[\[\]\s"']+$/g, ''), link: p.replace(/^[\[\]\s"']+|[\[\]\s"']+$/g, '') }));
+        }
+      }
+      return [{ name: s.replace(/^[\[\]\s"']+|[\[\]\s"']+$/g, ''), link: s.replace(/^[\[\]\s"']+|[\[\]\s"']+$/g, '') }];
+    }
+    // fallback
+    return [{ name: String(val), link: String(val) }];
+  };
+
+  // Prepare display data with normalized act_link and documents to avoid showing raw brackets
+  const displayData = useMemo(() => {
+    return filteredData.map(item => {
+      try {
+        const newItem = { ...item };
+        newItem.act_link = normalizeLink(item.act_link);
+        newItem.documents = normalizeDocuments(item.documents);
+        // (debug removed)
+        return newItem;
+      } catch (e) {
+        return item;
+      }
+    });
+  }, [filteredData]);
+
+  
+
 
   // Очистка имени файла (транслитерация и замена недопустимых символов)
   const cleanFileName = (name) => {
@@ -140,42 +295,42 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     ];
 
     const wsData = [
-      headers,
-      ...filteredData.map(item => isSamples ? [
-        item.name || '',
-        item.appearance || '',
-        item.supplier || '',
-        item.manufacturer || '',
-        item.receipt_date ? new Date(item.receipt_date).toLocaleDateString() : '',
-        item.check_date ? new Date(item.check_date).toLocaleDateString() : '',
-        item.batch_number || '',
-        item.manufacture_date ? new Date(item.manufacture_date).toLocaleDateString() : '',
-        item.expiration_date || '',
-        item.appearance_match || '',
-        item.actual_mass || '',
-        item.inspected_metrics || '',
-        item.investigation_result || '',
-        item.passport_standard || '',
-        item.comment || ''
-      ] : [
-        item.name || '',
-        item.appearance || '',
-        item.supplier || '',
-        item.manufacturer || '',
-        item.receipt_date ? new Date(item.receipt_date).toLocaleDateString() : '',
-        item.check_date ? new Date(item.check_date).toLocaleDateString() : '',
-        item.batch_number || '',
-        item.manufacture_date ? new Date(item.manufacture_date).toLocaleDateString() : '',
-        item.expiration_date || '',
-        item.appearance_match || '',
-        item.actual_mass || '',
-        item.inspected_metrics || '',
-        item.investigation_result || '',
-        item.passport_standard || '',
-        item.full_name || '',
-        item.comment || ''
-      ])
-    ];
+        headers,
+        ...filteredData.map(item => isSamples ? [
+          item.name || '',
+          item.appearance || '',
+          item.supplier || '',
+          item.manufacturer || '',
+          item.receipt_date ? new Date(item.receipt_date).toLocaleDateString() : '',
+          item.check_date ? new Date(item.check_date).toLocaleDateString() : '',
+          item.batch_number || '',
+          item.manufacture_date ? new Date(item.manufacture_date).toLocaleDateString() : '',
+          item.expiration_date || '',
+          item.appearance_match || '',
+          formatScalar(item.actual_mass),
+          formatScalar(item.inspected_metrics),
+          formatScalar(item.investigation_result),
+          formatScalar(item.passport_standard),
+          item.comment || ''
+        ] : [
+          item.name || '',
+          item.appearance || '',
+          item.supplier || '',
+          item.manufacturer || '',
+          item.receipt_date ? new Date(item.receipt_date).toLocaleDateString() : '',
+          item.check_date ? new Date(item.check_date).toLocaleDateString() : '',
+          item.batch_number || '',
+          item.manufacture_date ? new Date(item.manufacture_date).toLocaleDateString() : '',
+          item.expiration_date || '',
+          item.appearance_match || '',
+          formatScalar(item.actual_mass),
+          formatScalar(item.inspected_metrics),
+          formatScalar(item.investigation_result),
+          formatScalar(item.passport_standard),
+          item.full_name || '',
+          item.comment || ''
+        ])
+      ];
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
     const wb = XLSX.utils.book_new();
@@ -338,6 +493,9 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   function DocumentsCell({ item, handleDocumentUpload, handleViewDocument, handleDocumentDelete }) {
     const [localDocName, setLocalDocName] = useState('');
 
+    // Always normalize documents at render time to avoid any leftover raw bracketed strings
+    const docs = normalizeDocuments(item.documents);
+
     useEffect(() => {
       const saved = docNameById.current.get(item.id);
       if (saved) setLocalDocName(saved);
@@ -354,7 +512,11 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
 
     return (
       <div style={{ minWidth: 260, maxWidth: 350 }}>
-        {(item.documents && item.documents.length > 0) && item.documents.map((doc, index) => (
+        {/* Quick textual summary to avoid any bracketed-array visual */}
+        {(docs && docs.length > 0) && (
+          <div style={{ marginBottom: 6, color: '#333', fontSize: 13 }}>{docs.map(d => d.name || d.link).join(', ')}</div>
+        )}
+        {(docs && docs.length > 0) && docs.map((doc, index) => (
           <div key={doc.fileName || doc.link || doc.name || index} style={{ marginBottom: '5px', border: '1px solid #ccc', padding: '5px' }}>
             <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.name}</div>
             <button onClick={() => handleViewDocument(doc.link)}>Просмотр</button>
@@ -403,7 +565,7 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   // --- Мемоизированная строка таблицы для сырья и продукции (TableRow) ---
   // TableRow is memoized to avoid remounting when irrelevant props change.
   // Comparison checks only the item.id, item.status, item.act_link and item.documents fields.
-  const TableRow = React.memo(function TableRow({ item, getRowStyle, supabase, table, onEdit, handleViewDocument, handleActClick, handleLabelClick, handleDocumentDelete, handleDocumentUpload, handleEditLocal, handleDelete, renderList }) {
+  const TableRow = React.memo(function TableRow({ item, getRowStyle, supabase, table, onEdit, handleViewDocument, handleActClick, handleActDelete, handleLabelClick, handleDocumentDelete, handleDocumentUpload, handleEditLocal, handleDelete }) {
     const rowStyle = getRowStyle(item.status);
     const hasStatusColor = rowStyle && rowStyle.backgroundColor;
   // Перенос локального состояния имени документа в DocumentsCell
@@ -422,19 +584,26 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
         <td>{item.manufacture_date ? new Date(item.manufacture_date).toLocaleDateString() : '-'}</td>
         <td>{item.expiration_date}</td>
         <td>{item.appearance_match}</td>
-        <td>{item.actual_mass}</td>
-        <td>{renderList(item.inspected_metrics)}</td>
-        <td>{renderList(item.investigation_result)}</td>
-        <td>{renderList(item.passport_standard)}</td>
+  <td>{formatScalar(item.actual_mass)}</td>
+  <td>{formatScalar(item.inspected_metrics)}</td>
+  <td>{formatScalar(item.investigation_result)}</td>
+  <td>{formatScalar(item.passport_standard)}</td>
         <td>{item.full_name}</td>
         <td>{item.comment}</td>
         {/* Столбец "Акт" */}
         <td>
-          {item.act_link ? (
-            <button onClick={() => handleViewDocument(item.act_link)}>Просмотр</button>
-          ) : (
-            <button onClick={() => handleActClick(item)}>Создать акт</button>
-          )}
+          {(() => {
+            const actLink = normalizeLink(item.act_link);
+            if (actLink) {
+              return (
+                <>
+                  <button onClick={() => handleViewDocument(actLink)}>Просмотр</button>
+                  <button onClick={() => handleActDelete(item)} style={{ marginLeft: 6 }}>Удалить акт</button>
+                </>
+              );
+            }
+            return <button onClick={() => handleActClick(item)}>Создать акт</button>;
+          })()}
         </td>
         {/* Столбец "Наклейка" */}
         <td>
@@ -509,12 +678,15 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
         <button onClick={() => handleDelete(item.id)}>Удалить</button>
         <button onClick={() => handleActClick(item)}>Создать акт</button>
         <button onClick={() => handleLabelClick(item)}>Создать этикетку</button>
-        {item.act_link && (
-          <button onClick={() => handleViewDocument(item.act_link)}>Просмотр акта</button>
-        )}
-        {item.act_link && (
-          <button onClick={() => handleActDelete(item)}>Удалить акт</button>
-        )}
+        {(() => {
+          const actLink = normalizeLink(item.act_link);
+          return actLink ? (
+            <>
+              <button onClick={() => handleViewDocument(actLink)}>Просмотр акта</button>
+              <button onClick={() => handleActDelete(item)}>Удалить акт</button>
+            </>
+          ) : null;
+        })()}
       </div>
     );
   }
@@ -582,8 +754,8 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     <SearchControls searchParams={searchParams} handleSearchChange={handleSearchChange} isVisible={isSearchVisible} />
   );
 
-  // Рендер строк
-  const renderRows = filteredData.map((item, idx) => {
+  // Рендер строк (используем displayData — нормализованные поля)
+  const renderRows = displayData.map((item, idx) => {
     if (isSamples) {
       return (
         <tr key={item.id} style={getRowStyle(item.status)}>
@@ -597,18 +769,21 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
           <td>{item.manufacture_date ? new Date(item.manufacture_date).toLocaleDateString() : ''}</td>
           <td>{item.expiration_date}</td>
           <td>{item.appearance_match}</td>
-          <td>{item.actual_mass}</td>
-          <td>{renderList(item.inspected_metrics)}</td>
-          <td>{renderList(item.investigation_result)}</td>
-          <td>{renderList(item.passport_standard)}</td>
+            <td>{formatScalar(item.actual_mass)}</td>
+            <td>{formatScalar(item.inspected_metrics)}</td>
+            <td>{formatScalar(item.investigation_result)}</td>
+            <td>{formatScalar(item.passport_standard)}</td>
           <td>{item.comment}</td>
           <td>
-            {(item.documents && item.documents.length > 0) ? item.documents.map((doc, i) => (
-              <div key={doc.fileName || doc.link || doc.name || i} style={{ marginBottom: '5px' }}>
-                <span style={{ marginRight: 8 }}>{doc.name}</span>
-                <button onClick={() => handleViewDocument(doc.link)}>Просмотр</button>
-              </div>
-            )) : null}
+                  {(normalizeDocuments(item.documents) && normalizeDocuments(item.documents).length > 0) ? (
+                    <div style={{ marginBottom: 6, color: '#333', fontSize: 13 }}>{normalizeDocuments(item.documents).map(d => d.name || d.link).join(', ')}</div>
+                  ) : null}
+                  {(normalizeDocuments(item.documents) && normalizeDocuments(item.documents).length > 0) ? normalizeDocuments(item.documents).map((doc, i) => (
+                    <div key={doc.fileName || doc.link || doc.name || i} style={{ marginBottom: '5px' }}>
+                      <span style={{ marginRight: 8 }}>{doc.name}</span>
+                      <button onClick={() => handleViewDocument(doc.link)}>Просмотр</button>
+                    </div>
+                  )) : null}
           </td>
           <td>{renderActions(item)}</td>
         </tr>
@@ -625,12 +800,13 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
           onEdit={onEdit}
           handleViewDocument={handleViewDocument}
           handleActClick={handleActClick}
+          handleActDelete={handleActDelete}
           handleLabelClick={handleLabelClick}
           handleDocumentDelete={handleDocumentDelete}
           handleDocumentUpload={handleDocumentUpload}
           handleEditLocal={handleEditLocal}
           handleDelete={handleDelete}
-          renderList={renderList}
+        
         />
       );
     }
