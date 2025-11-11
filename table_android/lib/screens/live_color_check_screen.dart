@@ -19,8 +19,8 @@ class _LiveColorCheckScreenState extends State<LiveColorCheckScreen> {
   CameraController? _controller;
   Future<void>? _initFuture;
   bool _busy = false;
-  Map<String, dynamic>? _closest;
-  List<Map<String, dynamic>> _top3 = [];
+  Map<String, dynamic>? _closest; // больше не используем в UI
+  List<Map<String, dynamic>> _top3 = []; // больше не используем в UI
   Map<String, double>? _lastLab; // последняя измеренная LAB
   Map<String, dynamic>? _selectedEtalon; // подтверждённый/выбранный эталон
   String? _error;
@@ -159,21 +159,16 @@ class _LiveColorCheckScreenState extends State<LiveColorCheckScreen> {
       final lab = _rgbToLab(avgR, avgG, avgB);
       _lastLab = lab;
 
-      final candidates = _etalons
-          .map((e) {
-            final dE = _deltaE00(lab, {'L': (e['L'] as num).toDouble(), 'a': (e['a'] as num).toDouble(), 'b': (e['b'] as num).toDouble()});
-            final m = Map<String, dynamic>.from(e);
-            m['dE'] = dE;
-            return m;
-          })
-          .toList()
-        ..sort((a, b) => (a['dE'] as double).compareTo(b['dE'] as double));
-
+      // Больше не предлагаем топ‑кандидатов автоматически. Просто запоминаем замер
+      // и сразу открываем выбор продукта.
       setState(() {
-        _closest = candidates.isNotEmpty ? candidates.first : null;
-        _top3 = candidates.take(3).toList();
-        _selectedEtalon = null; // сброс подтверждения на каждый новый замер
+        _closest = null;
+        _top3 = [];
+        _selectedEtalon = null; // каждый новый замер сбрасывает выбор
       });
+      // Откроем выбор продукта сразу после замера.
+      // Не await, чтобы не блокировать финализацию _busy во finally.
+      _openProductPicker(context);
     } catch (e) {
       setState(() => _error = 'Ошибка замера: $e');
     } finally {
@@ -331,7 +326,7 @@ class _LiveColorCheckScreenState extends State<LiveColorCheckScreen> {
               ],
             ),
           ),
-          if (_closest != null) _buildSuggestionCard(context),
+          // Убрали подсказку топ‑кандидатов. Пользователь сам выбирает продукт из списка.
           if (_selectedEtalon != null) _buildVerdictCard(),
         ],
       ),

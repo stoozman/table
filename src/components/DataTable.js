@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import DataForm from './DataForm';
 import { 
@@ -8,24 +8,38 @@ import {
   deleteDocumentFromSupabase 
 } from '../utils/documentGenerator';
 import { generateLabelPdf } from '../utils/labelPdfGenerator';
-import useTableSearch from '../hooks/useTableSearch';
+// removed useTableSearch hook to keep search state local to this component
 import SearchControls from './SearchControls';
 import './DataTable.css';
 
 function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   const [documentLinks, setDocumentLinks] = useState({});
-  const { searchParams, filteredData, handleSearchChange } = useTableSearch(data);
-  // Debug: inspect array fields and filtering
-  console.log('DataTable full data:', data);
-  console.log('DataTable first item.inspected_metrics:', data[0]?.inspected_metrics, 'type:', typeof data[0]?.inspected_metrics, 'isArray:', Array.isArray(data[0]?.inspected_metrics));
-  console.log('DataTable searchParams:', searchParams);
-  console.log('DataTable filteredData count:', filteredData.length);
+  // Local search state (replaces useTableSearch hook)
+  const [searchParams, setSearchParams] = useState({});
+  const handleSearchChange = (e) => {
+    const { name, value } = e.target;
+    setSearchParams(prev => ({ ...prev, [name]: value }));
+  };
+  // Memoize filtered data to avoid recomputing on unrelated renders
+  const filteredData = useMemo(() => {
+    try {
+      return data.filter(item => {
+        return Object.entries(searchParams).every(([k, v]) => {
+          if (!v || !String(v).trim()) return true;
+          const itemVal = item?.[k];
+          return itemVal != null && String(itemVal).toLowerCase().includes(String(v).toLowerCase());
+        });
+      });
+    } catch (e) {
+      return data;
+    }
+  }, [data, searchParams]);
   const [labelLinks, setLabelLinks] = useState({});
   const [isTableVisible, setIsTableVisible] = useState(true);
   const [isSearchVisible, setIsSearchVisible] = useState(true);
   const [editingItem, setEditingItem] = useState(null);
-  // Состояние для хранения введённых названий документов по id элемента
-  const [docNames, setDocNames] = useState({});
+  // Map to persist per-row document name between renders
+  const docNameById = React.useRef(new Map());
 
   // СНАЧАЛА получаем filteredData!
   // Для всех таблиц используем единый компонент поиска
@@ -246,9 +260,10 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
 
   // Функция загрузки документов (для нового столбца "Документы")
   const handleDocumentUpload = async (item, customName, file) => {
+    customName = (customName || '').trim();
     if (!file || !customName) {
       alert("Введите название документов и выберите файл");
-      return;
+      return null;
     }
     try {
       const extension = file.name.split('.').pop();
@@ -270,12 +285,14 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
         }
         if (updatedData && updatedData.length > 0) {
           onEdit(updatedData[0]);
+          return updatedData[0];
         }
-        setDocNames(prev => ({ ...prev, [item.id]: '' }));
+        // Note: do not touch outer docNames state here; caller (row) will clear its local input
       }
     } catch (error) {
       console.error("Ошибка загрузки документов:", error);
       alert("Ошибка загрузки документов");
+      return null;
     }
   };
 
@@ -317,31 +334,64 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     }
   };
 
-  // Универсальная ячейка для документов (всегда с формой добавления)
-  function renderDocumentsCell(item) {
+  // DocumentsCell — отдельный компонент, локальное состояние для имени документа
+  function DocumentsCell({ item, handleDocumentUpload, handleViewDocument, handleDocumentDelete }) {
+    const [localDocName, setLocalDocName] = useState('');
+
+    useEffect(() => {
+      const saved = docNameById.current.get(item.id);
+      if (saved) setLocalDocName(saved);
+    }, [item.id]);
+
+    const handleNameChange = (v) => {
+      setLocalDocName(v);
+      try {
+        docNameById.current.set(item.id, v);
+      } catch (e) {
+        // ignore
+      }
+    };
+
     return (
       <div style={{ minWidth: 260, maxWidth: 350 }}>
         {(item.documents && item.documents.length > 0) && item.documents.map((doc, index) => (
-          <div key={index} style={{ marginBottom: '5px', border: '1px solid #ccc', padding: '5px' }}>
+          <div key={doc.fileName || doc.link || doc.name || index} style={{ marginBottom: '5px', border: '1px solid #ccc', padding: '5px' }}>
             <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.name}</div>
             <button onClick={() => handleViewDocument(doc.link)}>Просмотр</button>
             <button onClick={() => handleDocumentDelete(item, index)}>Удалить</button>
           </div>
         ))}
+
         <div style={{ marginTop: '10px', display: 'flex', gap: 4, flexDirection: 'column', minWidth: 220, maxWidth: 320 }}>
           <input
             type="text"
             placeholder="Название документов"
-            value={docNames[item.id] || ''}
-            onChange={(e) => setDocNames({ ...docNames, [item.id]: e.target.value })}
+            value={localDocName || ''}
+            onChange={(e) => handleNameChange(e.target.value)}
             style={{ marginBottom: '5px', width: '100%' }}
           />
           <input
             type="file"
             onChange={e => {
               const file = e.target.files[0];
-              handleDocumentUpload(item, docNames[item.id], file);
-              e.target.value = '';
+              if (!file) return;
+              const nameTrim = (localDocName || '').trim();
+              if (!nameTrim) {
+                alert("Введите название документов и выберите файл");
+                e.target.value = '';
+                return;
+              }
+              handleDocumentUpload(item, nameTrim, file)
+                .then(result => {
+                  if (result) {
+                    // Очистим локальное поле после успешной загрузки
+                    handleNameChange('');
+                  }
+                  e.target.value = '';
+                })
+                .catch(() => {
+                  e.target.value = '';
+                });
             }}
             style={{ marginBottom: '5px', width: '100%' }}
           />
@@ -351,12 +401,14 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   }
 
   // --- Мемоизированная строка таблицы для сырья и продукции (TableRow) ---
-  const TableRow = React.memo(function TableRow({ item, getRowStyle, supabase, table, onEdit, handleViewDocument, handleActClick, handleLabelClick, handleDocumentDelete, handleDocumentUpload, handleEditLocal, handleDelete, docNames, setDocNames, renderList }) {
+  // TableRow is memoized to avoid remounting when irrelevant props change.
+  // Comparison checks only the item.id, item.status, item.act_link and item.documents fields.
+  const TableRow = React.memo(function TableRow({ item, getRowStyle, supabase, table, onEdit, handleViewDocument, handleActClick, handleLabelClick, handleDocumentDelete, handleDocumentUpload, handleEditLocal, handleDelete, renderList }) {
     const rowStyle = getRowStyle(item.status);
     const hasStatusColor = rowStyle && rowStyle.backgroundColor;
+  // Перенос локального состояния имени документа в DocumentsCell
     return (
       <tr
-        key={item.id}
         className={hasStatusColor ? 'status-colored-row' : ''}
         style={rowStyle}
       >
@@ -416,7 +468,15 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
           </select>
         </td>
         {/* Столбец "Документы" */}
-        <td>{renderDocumentsCell(item)}</td>
+        <td>
+          <DocumentsCell
+            key={item.id}
+            item={item}
+            handleDocumentUpload={handleDocumentUpload}
+            handleViewDocument={handleViewDocument}
+            handleDocumentDelete={handleDocumentDelete}
+          />
+        </td>
         {/* Столбец "Действия" */}
         <td>
           <button onClick={() => handleEditLocal(item)}>Редактировать</button>
@@ -424,6 +484,21 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
         </td>
       </tr>
     );
+  }, (prevProps, nextProps) => {
+    const a = prevProps.item || {};
+    const b = nextProps.item || {};
+    if (a.id !== b.id) return false;
+    if ((a.status || '') !== (b.status || '')) return false;
+    if ((a.act_link || '') !== (b.act_link || '')) return false;
+    // shallow compare documents via JSON stringify (documents usually small)
+    try {
+      const da = a.documents || [];
+      const db = b.documents || [];
+      if (JSON.stringify(da) !== JSON.stringify(db)) return false;
+    } catch (e) {
+      return false;
+    }
+    return true;
   });
 
   // Функция для отображения действий (без изменений)
@@ -511,7 +586,7 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   const renderRows = filteredData.map((item, idx) => {
     if (isSamples) {
       return (
-        <tr key={item.id || idx} style={getRowStyle(item.status)}>
+        <tr key={item.id} style={getRowStyle(item.status)}>
           <td>{item.name}</td>
           <td>{item.appearance}</td>
           <td>{item.supplier}</td>
@@ -527,7 +602,14 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
           <td>{renderList(item.investigation_result)}</td>
           <td>{renderList(item.passport_standard)}</td>
           <td>{item.comment}</td>
-          <td>{renderDocumentsCell(item)}</td>
+          <td>
+            {(item.documents && item.documents.length > 0) ? item.documents.map((doc, i) => (
+              <div key={doc.fileName || doc.link || doc.name || i} style={{ marginBottom: '5px' }}>
+                <span style={{ marginRight: 8 }}>{doc.name}</span>
+                <button onClick={() => handleViewDocument(doc.link)}>Просмотр</button>
+              </div>
+            )) : null}
+          </td>
           <td>{renderActions(item)}</td>
         </tr>
       );
@@ -535,7 +617,7 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
       // Обычный (сырье, продукция) — старый рендер
       return (
         <TableRow
-          key={item.id || idx}
+          key={item.id}
           item={item}
           getRowStyle={getRowStyle}
           supabase={supabase}
@@ -548,8 +630,6 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
           handleDocumentUpload={handleDocumentUpload}
           handleEditLocal={handleEditLocal}
           handleDelete={handleDelete}
-          docNames={docNames}
-          setDocNames={setDocNames}
           renderList={renderList}
         />
       );
