@@ -45,7 +45,6 @@ export async function generateLabelPdf(data) {
   field('Изг. дата:', formatDate(data.manufacture_date));
   field('Партия:', data.batch_number);
   field('Поставка:', formatDate(data.receipt_date));
-  field('Годен до:', formatDate(data.expiration_date));
 
   return doc.output('blob');
 }
