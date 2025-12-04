@@ -62,7 +62,7 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       debugPrint('Subscribing to messages for room ${widget.room.id}');
       
-      // Используем простой канал без фильтра, фильтруем вручную в callback
+      // Слушаем все события: INSERT, UPDATE, DELETE
       _messagesSubscription = Supabase.instance.client
           .channel('public:messages')
           .onPostgresChanges(
@@ -70,9 +70,25 @@ class _ChatScreenState extends State<ChatScreen> {
             schema: 'public',
             table: 'messages',
             callback: (payload) {
-              debugPrint('=== REALTIME EVENT FIRED ===');
-              debugPrint('Full payload: $payload');
-              debugPrint('New record: ${payload.newRecord}');
+              debugPrint('=== INSERT EVENT FIRED ===');
+              _handleRealtimeEvent(payload);
+            },
+          )
+          .onPostgresChanges(
+            event: PostgresChangeEvent.update,
+            schema: 'public',
+            table: 'messages',
+            callback: (payload) {
+              debugPrint('=== UPDATE EVENT FIRED ===');
+              _handleRealtimeEvent(payload);
+            },
+          )
+          .onPostgresChanges(
+            event: PostgresChangeEvent.delete,
+            schema: 'public',
+            table: 'messages',
+            callback: (payload) {
+              debugPrint('=== DELETE EVENT FIRED ===');
               _handleRealtimeEvent(payload);
             },
           )
@@ -104,32 +120,61 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _pollNewMessages() async {
     try {
-      if (_lastMessageTime == null) return;
+      // Получаем ВСЕ сообщения в комнате (не только новые) - но только не удаленные
       final resp = await Supabase.instance.client
           .from('messages')
           .select()
           .eq('room_id', widget.room.id)
-          .eq('deleted', false)
-          .gt('created_at', _lastMessageTime!.toIso8601String())
+          .eq('deleted', false)  // Исключаем удаленные сообщения
           .order('created_at', ascending: true);
 
-      if (resp != null && resp is List && resp.isNotEmpty) {
-        final newMessages = resp.map((j) => Message.fromJson(j)).toList();
+      if (resp != null && resp is List) {
+        final fetchedMessages = resp.map((j) => Message.fromJson(j)).toList();
         
-        // Дедублируем: не добавляем сообщения которые уже есть локально
-        final messagesToAdd = newMessages.where((msg) {
-          return !messages.any((existing) => existing.id == msg.id);
-        }).toList();
+        // Проверяем, был ли пользователь в конце списка перед обновлением
+        final wasAtBottom = _scrollController.hasClients &&
+            _scrollController.position.pixels >=
+                _scrollController.position.maxScrollExtent - 100;
         
-        if (messagesToAdd.isNotEmpty) {
-          setState(() {
-            messages.addAll(messagesToAdd);
+        // Синхронизируем с локальным списком
+        setState(() {
+          // Проходим по каждому загруженному сообщению
+          for (final fetchedMsg in fetchedMessages) {
+            final existingIndex = messages.indexWhere((m) => m.id == fetchedMsg.id);
+            
+            if (existingIndex != -1) {
+              // Сообщение уже есть - обновляем если изменилось
+              if (messages[existingIndex].textContent != fetchedMsg.textContent ||
+                  messages[existingIndex].deleted != fetchedMsg.deleted ||
+                  messages[existingIndex].editedAt != fetchedMsg.editedAt) {
+                messages[existingIndex] = fetchedMsg;
+                debugPrint('Polling: updated message ${fetchedMsg.id}');
+              }
+            } else {
+              // Новое сообщение - добавляем
+              messages.add(fetchedMsg);
+              debugPrint('Polling: added new message ${fetchedMsg.id}');
+            }
+          }
+          
+          // Удаляем локальные сообщения которых больше нет в БД (или они помечены как удаленные)
+          messages.removeWhere((localMsg) {
+            final exists = fetchedMessages.any((m) => m.id == localMsg.id);
+            if (!exists) {
+              debugPrint('Polling: removed message ${localMsg.id} (not in DB or deleted)');
+            }
+            return !exists;
           });
+        });
+        
+        // Скроллим вниз только если было новое сообщение И пользователь был внизу
+        if (fetchedMessages.length > messages.length && wasAtBottom) {
           _scrollToBottom();
-          debugPrint('Polling: added ${messagesToAdd.length} new messages (skipped ${newMessages.length - messagesToAdd.length} duplicates)');
         }
         
-        _lastMessageTime = newMessages.last.createdAt;
+        if (fetchedMessages.isNotEmpty) {
+          _lastMessageTime = fetchedMessages.last.createdAt;
+        }
       }
     } catch (e) {
       debugPrint('Polling error: $e');
@@ -143,19 +188,33 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     final roomId = widget.room.id;
-    final eventRoomId = payload.newRecord['room_id'] as String?;
+    
+    // Для INSERT: используем newRecord
+    // Для UPDATE и DELETE: используем oldRecord чтобы получить ID
+    final record = payload.eventType == PostgresChangeEvent.delete 
+        ? payload.oldRecord 
+        : payload.newRecord;
+    
+    final eventRoomId = record['room_id'] as String?;
+    final messageId = record['id'] as String?;
 
     debugPrint('Event type: ${payload.eventType}');
     debugPrint('Event room ID: $eventRoomId');
     debugPrint('Current room ID: $roomId');
-    debugPrint('Match: ${eventRoomId == roomId}');
+    debugPrint('Message ID: $messageId');
+
+    // Проверяем, что это сообщение из текущего чата
+    if (eventRoomId != roomId) {
+      debugPrint('✗ Message ignored: room mismatch');
+      return;
+    }
 
     if (payload.eventType == PostgresChangeEvent.insert) {
       try {
         final newMessage = Message.fromJson(payload.newRecord);
         debugPrint('Parsed message: ID=${newMessage.id}, Room=${newMessage.roomId}, Text=${newMessage.textContent}');
 
-        if (newMessage.roomId == roomId && !newMessage.deleted) {
+        if (!newMessage.deleted) {
           setState(() {
             final exists = messages.any((m) => m.id == newMessage.id);
             debugPrint('Message already in list: $exists');
@@ -163,15 +222,52 @@ class _ChatScreenState extends State<ChatScreen> {
             if (!exists) {
               messages.add(newMessage);
               debugPrint('✓ Message added! Total: ${messages.length}');
-              _scrollToBottom();
             }
           });
+          
+          // Скроллим вниз только если это наше сообщение
+          if (newMessage.userId == _currentUserId) {
+            _scrollToBottom();
+          }
         } else {
-          debugPrint('✗ Message ignored: room mismatch or deleted');
+          debugPrint('✗ Message ignored: deleted');
         }
       } catch (e) {
         debugPrint('Error parsing message: $e');
       }
+    } else if (payload.eventType == PostgresChangeEvent.update) {
+      // Обновление сообщения
+      try {
+        final updatedMessage = Message.fromJson(payload.newRecord);
+        debugPrint('Message updated: ID=${updatedMessage.id}, deleted=${updatedMessage.deleted}');
+
+        setState(() {
+          final index = messages.indexWhere((m) => m.id == updatedMessage.id);
+          if (index != -1) {
+            if (updatedMessage.deleted) {
+              // Если помечено как удаленное, удаляем из списка
+              messages.removeAt(index);
+              debugPrint('✓ Message removed (marked as deleted)');
+            } else {
+              // Обновляем содержимое
+              messages[index] = updatedMessage;
+              debugPrint('✓ Message updated at index $index');
+            }
+          } else {
+            debugPrint('✗ Message not found in local list');
+          }
+        });
+      } catch (e) {
+        debugPrint('Error parsing updated message: $e');
+      }
+    } else if (payload.eventType == PostgresChangeEvent.delete) {
+      // Удаление сообщения
+      debugPrint('Message deleted: ID=$messageId');
+      
+      setState(() {
+        messages.removeWhere((m) => m.id == messageId);
+        debugPrint('✓ Message removed! Total: ${messages.length}');
+      });
     }
   }
 
@@ -405,10 +501,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     try {
-      // Удаляем сообщение из БД
+      // Помечаем сообщение как удаленное в БД (для синхронизации между устройствами)
       await Supabase.instance.client
           .from('messages')
-          .delete()
+          .update({'deleted': true})
           .eq('id', message.id);
 
       // Удаляем из локального списка
