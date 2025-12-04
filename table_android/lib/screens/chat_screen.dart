@@ -324,6 +324,75 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  Future<void> _deleteRoom() async {
+    // Проверяем, что текущий пользователь - создатель чата
+    if (_currentUserId != widget.room.createdBy) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Только создатель может удалить чат')),
+        );
+      }
+      return;
+    }
+
+    // Подтверждение удаления
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Удалить чат?'),
+        content: const Text(
+          'Это действие нельзя отменить. Все сообщения будут удалены.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      // 1. Удаляем все сообщения в этом чате
+      await Supabase.instance.client
+          .from('messages')
+          .delete()
+          .eq('room_id', widget.room.id);
+
+      // 2. Удаляем всех участников чата
+      await Supabase.instance.client
+          .from('room_members')
+          .delete()
+          .eq('room_id', widget.room.id);
+
+      // 3. Удаляем сам чат
+      await Supabase.instance.client
+          .from('rooms')
+          .delete()
+          .eq('id', widget.room.id);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Чат удалён')),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка удаления чата: $e')),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     _messagesSubscription.unsubscribe();
@@ -347,6 +416,14 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ],
         ),
+        actions: [
+          if (_currentUserId == widget.room.createdBy)
+            IconButton(
+              icon: const Icon(Icons.delete),
+              onPressed: _deleteRoom,
+              tooltip: 'Удалить чат',
+            ),
+        ],
       ),
       body: Column(
         children: [
