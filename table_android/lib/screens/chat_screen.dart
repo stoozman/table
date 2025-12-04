@@ -393,6 +393,169 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _deleteMessage(Message message) async {
+    // Проверяем, что это наше сообщение
+    if (message.userId != _currentUserId) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Можно удалять только свои сообщения')),
+        );
+      }
+      return;
+    }
+
+    try {
+      // Удаляем сообщение из БД
+      await Supabase.instance.client
+          .from('messages')
+          .delete()
+          .eq('id', message.id);
+
+      // Удаляем из локального списка
+      setState(() {
+        messages.removeWhere((m) => m.id == message.id);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Сообщение удалено')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка удаления: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _editMessage(Message message) async {
+    // Проверяем, что это наше сообщение
+    if (message.userId != _currentUserId) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Можно редактировать только свои сообщения')),
+        );
+      }
+      return;
+    }
+
+    final controller = TextEditingController(text: message.textContent ?? '');
+
+    final newText = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Редактировать сообщение'),
+        content: TextField(
+          controller: controller,
+          maxLines: null,
+          decoration: InputDecoration(
+            hintText: 'Введите новый текст',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+
+    if (newText == null || newText.isEmpty) return;
+
+    try {
+      // Обновляем в БД
+      await Supabase.instance.client
+          .from('messages')
+          .update({
+            'text_content': newText,
+            'edited_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', message.id);
+
+      // Обновляем в локальном списке
+      setState(() {
+        final index = messages.indexWhere((m) => m.id == message.id);
+        if (index != -1) {
+          messages[index] = messages[index].copyWith(
+            textContent: newText,
+            editedAt: DateTime.now(),
+          );
+        }
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Сообщение обновлено')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка редактирования: $e')),
+        );
+      }
+    }
+  }
+
+  void _showMessageMenu(Message message) {
+    final isMe = message.userId == _currentUserId;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.info),
+              title: Text(
+                'Отправлено: ${dateFormatFull.format(message.createdAt)}',
+              ),
+              enabled: false,
+            ),
+            if (message.editedAt != null)
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: Text(
+                  'Отредактировано: ${dateFormatFull.format(message.editedAt!)}',
+                ),
+                enabled: false,
+              ),
+            const Divider(),
+            if (isMe)
+              ListTile(
+                leading: const Icon(Icons.edit, color: Colors.blue),
+                title: const Text('Редактировать'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _editMessage(message);
+                },
+              ),
+            if (isMe)
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('Удалить'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _deleteMessage(message);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _messagesSubscription.unsubscribe();
@@ -476,113 +639,131 @@ class _ChatScreenState extends State<ChatScreen> {
                                 alignment: isMe
                                     ? Alignment.centerRight
                                     : Alignment.centerLeft,
-                                child: Container(
-                                  margin: const EdgeInsets.all(8),
-                                  padding: const EdgeInsets.all(12),
-                                  constraints: BoxConstraints(
-                                    maxWidth:
-                                        MediaQuery.of(context).size.width * 0.75,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: isMe
-                                        ? Colors.blue[300]
-                                        : Colors.grey[300],
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: isMe
-                                        ? CrossAxisAlignment.end
-                                        : CrossAxisAlignment.start,
-                                    children: [
-                                      if (!isMe)
-                                        Text(
-                                          message.userName,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      if (message.textContent != null &&
-                                          message.textContent!.isNotEmpty)
-                                        Padding(
-                                          padding: !isMe
-                                              ? EdgeInsets.zero
-                                              : EdgeInsets.zero,
-                                          child: Text(message.textContent!),
-                                        ),
-                                      if (message.mediaType == 'photo')
-                                        GestureDetector(
-                                          onTap: () => _showMediaPreview(
-                                            message.mediaUrl!,
-                                            message.fileName,
-                                          ),
-                                          child: Container(
-                                            margin:
-                                                const EdgeInsets.only(top: 8),
-                                            constraints:
-                                                const BoxConstraints(
-                                              maxHeight: 300,
+                                child: GestureDetector(
+                                  onLongPress: () => _showMessageMenu(message),
+                                  child: Container(
+                                    margin: const EdgeInsets.all(8),
+                                    padding: const EdgeInsets.all(12),
+                                    constraints: BoxConstraints(
+                                      maxWidth:
+                                          MediaQuery.of(context).size.width * 0.75,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isMe
+                                          ? Colors.blue[300]
+                                          : Colors.grey[300],
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: isMe
+                                          ? CrossAxisAlignment.end
+                                          : CrossAxisAlignment.start,
+                                      children: [
+                                        if (!isMe)
+                                          Text(
+                                            message.userName,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
                                             ),
-                                            child: ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                              child: Image.network(
-                                                message.mediaUrl!,
-                                                fit: BoxFit.cover,
+                                          ),
+                                        if (message.textContent != null &&
+                                            message.textContent!.isNotEmpty)
+                                          Padding(
+                                            padding: !isMe
+                                                ? EdgeInsets.zero
+                                                : EdgeInsets.zero,
+                                            child: Text(message.textContent!),
+                                          ),
+                                        if (message.mediaType == 'photo')
+                                          GestureDetector(
+                                            onTap: () => _showMediaPreview(
+                                              message.mediaUrl!,
+                                              message.fileName,
+                                            ),
+                                            child: Container(
+                                              margin:
+                                                  const EdgeInsets.only(top: 8),
+                                              constraints:
+                                                  const BoxConstraints(
+                                                maxHeight: 300,
+                                              ),
+                                              child: ClipRRect(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                                child: Image.network(
+                                                  message.mediaUrl!,
+                                                  fit: BoxFit.cover,
+                                                ),
                                               ),
                                             ),
                                           ),
-                                        ),
-                                      if (message.mediaType == 'video')
-                                        GestureDetector(
-                                          onTap: () => _showMediaPreview(
-                                            message.mediaUrl!,
-                                            message.fileName,
-                                          ),
-                                          child: Container(
-                                            margin:
-                                                const EdgeInsets.only(top: 8),
-                                            padding: const EdgeInsets.all(16),
-                                            decoration: BoxDecoration(
-                                              color: Colors.black26,
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
+                                        if (message.mediaType == 'video')
+                                          GestureDetector(
+                                            onTap: () => _showMediaPreview(
+                                              message.mediaUrl!,
+                                              message.fileName,
                                             ),
-                                            child: Column(
-                                              children: [
-                                                const Icon(
-                                                  Icons.play_circle,
-                                                  size: 40,
-                                                  color: Colors.white,
-                                                ),
-                                                const SizedBox(height: 8),
-                                                Text(
-                                                  message.fileName ??
-                                                      'Видео',
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
+                                            child: Container(
+                                              margin:
+                                                  const EdgeInsets.only(top: 8),
+                                              padding: const EdgeInsets.all(16),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black26,
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: Column(
+                                                children: [
+                                                  const Icon(
+                                                    Icons.play_circle,
+                                                    size: 40,
                                                     color: Colors.white,
                                                   ),
-                                                ),
-                                              ],
+                                                  const SizedBox(height: 8),
+                                                  Text(
+                                                    message.fileName ??
+                                                        'Видео',
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      Padding(
-                                        padding:
-                                            const EdgeInsets.only(top: 4),
-                                        child: Text(
-                                          dateFormat.format(message.createdAt),
-                                          style: const TextStyle(
-                                            fontSize: 10,
-                                            color: Colors.grey,
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets.only(top: 4),
+                                          child: Column(
+                                            crossAxisAlignment: isMe
+                                                ? CrossAxisAlignment.end
+                                                : CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                dateFormat.format(message.createdAt),
+                                                style: const TextStyle(
+                                                  fontSize: 10,
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+                                              if (message.editedAt != null)
+                                                Text(
+                                                  '(отредактировано)',
+                                                  style: const TextStyle(
+                                                    fontSize: 8,
+                                                    color: Colors.grey,
+                                                  ),
+                                                ),
+                                            ],
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               );
