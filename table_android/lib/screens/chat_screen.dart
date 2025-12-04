@@ -35,6 +35,11 @@ class _ChatScreenState extends State<ChatScreen> {
   DateTime? _lastMessageTime;
   Timer? _pollTimer;
   bool _isPolling = false;
+  
+  // Variables for new message notifications
+  int _unreadMessageCount = 0;
+  bool _showNewMessageIndicator = false;
+  bool _isUserAtBottom = true;
 
   @override
   void initState() {
@@ -43,6 +48,9 @@ class _ChatScreenState extends State<ChatScreen> {
     debugPrint('Room: ${widget.room.name} (ID: ${widget.room.id})');
     _loadCurrentUserAndMessages();
     _subscribeToMessages();
+    
+    // Add scroll listener to track user position
+    _scrollController.addListener(_onScroll);
   }
 
   Future<void> _loadCurrentUserAndMessages() async {
@@ -137,6 +145,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 _scrollController.position.maxScrollExtent - 100;
         
         // Синхронизируем с локальным списком
+        int newMessageCount = 0;
         setState(() {
           // Проходим по каждому загруженному сообщению
           for (final fetchedMsg in fetchedMessages) {
@@ -153,6 +162,7 @@ class _ChatScreenState extends State<ChatScreen> {
             } else {
               // Новое сообщение - добавляем
               messages.add(fetchedMsg);
+              newMessageCount++;
               debugPrint('Polling: added new message ${fetchedMsg.id}');
             }
           }
@@ -165,10 +175,16 @@ class _ChatScreenState extends State<ChatScreen> {
             }
             return !exists;
           });
+          
+          // Обновляем счетчик новых сообщений если пользователь не в конце
+          if (newMessageCount > 0 && !_isUserAtBottom) {
+            _unreadMessageCount += newMessageCount;
+            _showNewMessageIndicator = true;
+          }
         });
         
         // Скроллим вниз только если было новое сообщение И пользователь был внизу
-        if (fetchedMessages.length > messages.length && wasAtBottom) {
+        if (newMessageCount > 0 && wasAtBottom) {
           _scrollToBottom();
         }
         
@@ -411,13 +427,87 @@ class _ChatScreenState extends State<ChatScreen> {
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollController.hasClients) {
+        // Прокручиваем с небольшим отступом чтобы строка ввода не перекрывала сообщение
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
+          _scrollController.position.maxScrollExtent + 80,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
       }
     });
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    
+    final isAtBottom = _scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 100;
+    
+    if (isAtBottom != _isUserAtBottom) {
+      setState(() {
+        _isUserAtBottom = isAtBottom;
+        // If user scrolled to bottom, hide indicator and reset count
+        if (isAtBottom) {
+          _showNewMessageIndicator = false;
+          _unreadMessageCount = 0;
+        }
+      });
+    }
+  }
+
+  Widget _buildNewMessageIndicator() {
+    if (!_showNewMessageIndicator || _unreadMessageCount == 0) {
+      return const SizedBox.shrink();
+    }
+
+    return Positioned(
+      top: 8,
+      right: 8,
+      child: GestureDetector(
+        onTap: () {
+          _scrollToBottom();
+          setState(() {
+            _showNewMessageIndicator = false;
+            _unreadMessageCount = 0;
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.blue,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.arrow_downward,
+                color: Colors.white,
+                size: 16,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                _unreadMessageCount > 1 
+                    ? '${_unreadMessageCount} новых' 
+                    : 'Новое сообщение',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _deleteRoom() async {
@@ -724,30 +814,32 @@ class _ChatScreenState extends State<ChatScreen> {
                               ],
                             ),
                           )
-                        : ListView.builder(
-                            controller: _scrollController,
-                            itemCount: messages.length,
-                            itemBuilder: (context, index) {
-                              final message = messages[index];
-                              final isMe = message.userId == _currentUserId;
+                        : Stack(
+                            children: [
+                              ListView.builder(
+                                controller: _scrollController,
+                                itemCount: messages.length,
+                                itemBuilder: (context, index) {
+                                  final message = messages[index];
+                                  final isMe = message.userId == _currentUserId;
 
-                              return Align(
-                                alignment: isMe
-                                    ? Alignment.centerRight
-                                    : Alignment.centerLeft,
-                                child: GestureDetector(
-                                  onLongPress: () => _showMessageMenu(message),
-                                  child: Container(
-                                    margin: const EdgeInsets.all(8),
-                                    padding: const EdgeInsets.all(12),
-                                    constraints: BoxConstraints(
-                                      maxWidth:
-                                          MediaQuery.of(context).size.width * 0.75,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: isMe
-                                          ? Colors.blue[300]
-                                          : Colors.grey[300],
+                                  return Align(
+                                    alignment: isMe
+                                        ? Alignment.centerRight
+                                        : Alignment.centerLeft,
+                                    child: GestureDetector(
+                                      onLongPress: () => _showMessageMenu(message),
+                                      child: Container(
+                                        margin: const EdgeInsets.all(8),
+                                        padding: const EdgeInsets.all(12),
+                                        constraints: BoxConstraints(
+                                          maxWidth:
+                                              MediaQuery.of(context).size.width * 0.75,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: isMe
+                                              ? Colors.blue[300]
+                                              : Colors.grey[300],
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Column(
@@ -864,6 +956,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ),
                               );
                             },
+                          ),
+                              _buildNewMessageIndicator(),
+                            ],
                           ),
           ),
           Container(
