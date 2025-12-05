@@ -7,6 +7,7 @@ class Room {
   final int memberCount;
   final String? lastMessageText;
   final DateTime? lastMessageTime;
+  final int unreadCount;
 
   Room({
     required this.id,
@@ -17,6 +18,7 @@ class Room {
     this.memberCount = 0,
     this.lastMessageText,
     this.lastMessageTime,
+    this.unreadCount = 0,
   });
 
   factory Room.fromJson(Map<String, dynamic> json) {
@@ -33,6 +35,7 @@ class Room {
       lastMessageTime: json['last_message_time'] != null
           ? DateTime.parse(json['last_message_time'] as String)
           : null,
+      unreadCount: json['unread_count'] as int? ?? 0,
     );
   }
 
@@ -50,6 +53,7 @@ class Room {
     int? memberCount,
     String? lastMessageText,
     DateTime? lastMessageTime,
+    int? unreadCount,
   }) {
     return Room(
       id: id ?? this.id,
@@ -60,6 +64,7 @@ class Room {
       memberCount: memberCount ?? this.memberCount,
       lastMessageText: lastMessageText ?? this.lastMessageText,
       lastMessageTime: lastMessageTime ?? this.lastMessageTime,
+      unreadCount: unreadCount ?? this.unreadCount,
     );
   }
 }

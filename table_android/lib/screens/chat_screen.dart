@@ -6,6 +6,7 @@ import 'dart:async';
 import '../models/message.dart';
 import '../models/room.dart';
 import '../services/local_storage.dart' as chat_storage;
+import '../services/chat_unread_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final Room room;
@@ -40,6 +41,7 @@ class _ChatScreenState extends State<ChatScreen> {
   int _unreadMessageCount = 0;
   bool _showNewMessageIndicator = false;
   bool _isUserAtBottom = true;
+  String? _lastReadMessageId;
 
   @override
   void initState() {
@@ -63,6 +65,26 @@ class _ChatScreenState extends State<ChatScreen> {
         isLoading = false;
         error = 'Ошибка загрузки: $e';
       });
+    }
+  }
+
+  Future<void> _markRoomAsRead() async {
+    if (_currentUserId == null || messages.isEmpty) return;
+    final latest = messages.lastWhere(
+      (m) => !m.deleted,
+      orElse: () => messages.last,
+    );
+    if (latest.id == _lastReadMessageId) return;
+    try {
+      await ChatUnreadService.markRoomAsRead(
+        roomId: widget.room.id,
+        userId: _currentUserId!,
+        lastMessageAt: latest.createdAt,
+        lastMessageId: latest.id,
+      );
+      _lastReadMessageId = latest.id;
+    } catch (e) {
+      debugPrint('Failed to mark room as read: $e');
     }
   }
 
@@ -186,6 +208,7 @@ class _ChatScreenState extends State<ChatScreen> {
         // Скроллим вниз только если было новое сообщение И пользователь был внизу
         if (newMessageCount > 0 && wasAtBottom) {
           _scrollToBottom();
+          _markRoomAsRead();
         }
         
         if (fetchedMessages.isNotEmpty) {
@@ -242,8 +265,14 @@ class _ChatScreenState extends State<ChatScreen> {
           });
           
           // Скроллим вниз только если это наше сообщение
-          if (newMessage.userId == _currentUserId) {
+          if (newMessage.userId == _currentUserId || _isUserAtBottom) {
             _scrollToBottom();
+            _markRoomAsRead();
+          } else {
+            setState(() {
+              _unreadMessageCount += 1;
+              _showNewMessageIndicator = true;
+            });
           }
         } else {
           debugPrint('✗ Message ignored: deleted');
@@ -273,6 +302,9 @@ class _ChatScreenState extends State<ChatScreen> {
             debugPrint('✗ Message not found in local list');
           }
         });
+        if (_isUserAtBottom) {
+          _markRoomAsRead();
+        }
       } catch (e) {
         debugPrint('Error parsing updated message: $e');
       }
@@ -284,6 +316,9 @@ class _ChatScreenState extends State<ChatScreen> {
         messages.removeWhere((m) => m.id == messageId);
         debugPrint('✓ Message removed! Total: ${messages.length}');
       });
+      if (_isUserAtBottom) {
+        _markRoomAsRead();
+      }
     }
   }
 
@@ -311,6 +346,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (messages.isNotEmpty) {
         _lastMessageTime = messages.last.createdAt;
         debugPrint('Loaded ${messages.length} messages. Last: $_lastMessageTime');
+        _markRoomAsRead();
       }
       _scrollToBottom();
     } catch (e) {
@@ -345,6 +381,7 @@ class _ChatScreenState extends State<ChatScreen> {
             messages.add(created);
           });
           _scrollToBottom();
+          _markRoomAsRead();
         } catch (e) {
           debugPrint('Failed to parse created message: $e');
         }
@@ -452,6 +489,9 @@ class _ChatScreenState extends State<ChatScreen> {
           _unreadMessageCount = 0;
         }
       });
+      if (isAtBottom) {
+        _markRoomAsRead();
+      }
     }
   }
 

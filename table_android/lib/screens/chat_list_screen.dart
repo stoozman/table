@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../models/room.dart';
 import '../services/local_storage.dart' as chat_storage;
+import '../services/chat_unread_service.dart';
 import 'chat_screen.dart';
 import 'new_chat_screen.dart';
 
@@ -20,6 +21,8 @@ class _ChatListScreenState extends State<ChatListScreen>
   String? error;
   String? _currentUserId;
   final dateFormat = DateFormat('dd.MM.yyyy HH:mm');
+  RealtimeChannel? _realtimeSubscription;
+  Set<String> _currentRoomIds = {};
 
   @override
   void initState() {
@@ -40,6 +43,7 @@ class _ChatListScreenState extends State<ChatListScreen>
     try {
       _currentUserId = await chat_storage.ChatUserStorage.getUserId();
       await _loadRooms();
+      _subscribeToMessages();
     } catch (e) {
       setState(() {
         isLoading = false;
@@ -68,10 +72,13 @@ class _ChatListScreenState extends State<ChatListScreen>
           .order('joined_at', ascending: false);
 
       List<Room> loadedRooms = [];
+      final List<String> roomIds = [];
+      final List<Future<void>> ensureFutures = [];
 
       for (var item in response) {
         final roomData = item['rooms'] as Map<String, dynamic>;
         final room = Room.fromJson(roomData);
+        roomIds.add(room.id);
 
         // Получаем количество участников
         final memberCount = await Supabase.instance.client
@@ -106,12 +113,37 @@ class _ChatListScreenState extends State<ChatListScreen>
             lastMessageTime: lastMessageTime,
           ),
         );
+
+        ensureFutures.add(
+          ChatUnreadService.ensureReadState(
+            roomId: room.id,
+            userId: _currentUserId!,
+            lastMessageAt: lastMessageTime,
+          ),
+        );
+      }
+
+      if (ensureFutures.isNotEmpty) {
+        await Future.wait(ensureFutures);
+      }
+
+      if (roomIds.isNotEmpty) {
+        final unreadMap =
+            await ChatUnreadService.fetchUnreadCounts(_currentUserId!, roomIds);
+        loadedRooms = loadedRooms
+            .map(
+              (room) => room.copyWith(
+                unreadCount: unreadMap[room.id] ?? 0,
+              ),
+            )
+            .toList();
       }
 
       setState(() {
         rooms = loadedRooms;
         isLoading = false;
         error = null;
+        _currentRoomIds = loadedRooms.map((room) => room.id).toSet();
       });
     } catch (e) {
       // Если ошибка о том, что нет данных - это нормально (просто нет комнат)
@@ -138,6 +170,7 @@ class _ChatListScreenState extends State<ChatListScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _realtimeSubscription?.unsubscribe();
     super.dispose();
   }
 
@@ -258,7 +291,9 @@ class _ChatListScreenState extends State<ChatListScreen>
                                   ),
                                 ],
                               ),
-                              trailing: const Icon(Icons.chevron_right),
+                              trailing: room.unreadCount > 0
+                                  ? _buildUnreadBadge(room.unreadCount)
+                                  : const Icon(Icons.chevron_right),
                             ),
                           );
                         },
@@ -269,11 +304,125 @@ class _ChatListScreenState extends State<ChatListScreen>
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const NewChatScreen()),
-          ).then((_) => _loadRooms());
+          ).then((_) {
+            _loadRooms();
+          });
         },
         tooltip: 'Создать чат',
         child: const Icon(Icons.add),
       ),
     );
+  }
+
+  Widget _buildUnreadBadge(int count) {
+    final display = count > 99 ? '99+' : '$count';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.redAccent,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.redAccent.withOpacity(0.3),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Text(
+        display,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  void _subscribeToMessages() {
+    if (_realtimeSubscription != null || _currentUserId == null) return;
+
+    _realtimeSubscription = Supabase.instance.client
+        .channel('public:messages_list_${_currentUserId!}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
+          callback: (payload) {
+            final record = payload.newRecord;
+            if (record == null) return;
+            final roomId = record['room_id'] as String?;
+            if (roomId == null) return;
+
+            if (_currentRoomIds.contains(roomId)) {
+              _refreshRoom(roomId);
+            } else {
+              _loadRooms();
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'room_read_states',
+          callback: (payload) {
+            final record = payload.newRecord ?? payload.oldRecord;
+            if (record == null) return;
+            final userId = record['user_id'] as String?;
+            if (userId != _currentUserId) return;
+            final roomId = record['room_id'] as String?;
+            if (roomId == null) return;
+            if (_currentRoomIds.contains(roomId)) {
+              _refreshRoom(roomId);
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _refreshRoom(String roomId) async {
+    if (_currentUserId == null) return;
+
+    try {
+      final latestMessage = await Supabase.instance.client
+          .from('messages')
+          .select('text_content, created_at')
+          .eq('room_id', roomId)
+          .eq('deleted', false)
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      final unreadMap = await ChatUnreadService.fetchUnreadCounts(
+        _currentUserId!,
+        [roomId],
+      );
+
+      final lastText = latestMessage != null
+          ? latestMessage['text_content'] as String?
+          : null;
+      final createdAtRaw = latestMessage != null
+          ? latestMessage['created_at'] as String?
+          : null;
+      final DateTime? createdAt =
+          createdAtRaw != null ? DateTime.parse(createdAtRaw) : null;
+      final unreadCount = unreadMap[roomId];
+
+      if (!mounted) return;
+      setState(() {
+        rooms = rooms.map((room) {
+          if (room.id != roomId) return room;
+          return room.copyWith(
+            lastMessageText: (lastText != null && lastText.isNotEmpty)
+                ? lastText
+                : room.lastMessageText,
+            lastMessageTime: createdAt ?? room.lastMessageTime,
+            unreadCount: unreadCount ?? room.unreadCount,
+          );
+        }).toList();
+      });
+    } catch (e) {
+      debugPrint('Failed to refresh room $roomId: $e');
+    }
   }
 }

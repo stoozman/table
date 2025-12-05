@@ -14,6 +14,8 @@ import 'screens/chat_list_screen.dart';
 import 'screens/profile_screen.dart';
 import 'dart:convert';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'services/local_storage.dart' as chat_storage;
+import 'services/chat_unread_service.dart';
 
 void main() async {
   print('main: start');
@@ -57,8 +59,110 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class StartScreen extends StatelessWidget {
+class StartScreen extends StatefulWidget {
   const StartScreen({super.key});
+
+  @override
+  State<StartScreen> createState() => _StartScreenState();
+}
+
+class _StartScreenState extends State<StartScreen> {
+  int _totalUnread = 0;
+  bool _isUnreadLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTotalUnread();
+  }
+
+  Future<void> _loadTotalUnread() async {
+    try {
+      final userId = await chat_storage.ChatUserStorage.getUserId();
+      final count = await ChatUnreadService.fetchTotalUnread(userId);
+      if (!mounted) return;
+      setState(() {
+        _totalUnread = count;
+        _isUnreadLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Failed to load unread count: $e');
+      if (!mounted) return;
+      setState(() {
+        _isUnreadLoading = false;
+      });
+    }
+  }
+
+  Widget _buildMenuButton({
+    required String label,
+    required VoidCallback onPressed,
+    Widget? badge,
+  }) {
+    final button = ElevatedButton(
+      onPressed: onPressed,
+      style: ElevatedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+      child: Text(label, style: const TextStyle(fontSize: 18)),
+    );
+
+    if (badge == null) return button;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        button,
+        Positioned(
+          right: -6,
+          top: -6,
+          child: badge,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUnreadBadge() {
+    if (_isUnreadLoading) {
+      return const SizedBox(
+        height: 20,
+        width: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    if (_totalUnread <= 0) {
+      return const SizedBox.shrink();
+    }
+
+    final text = _totalUnread > 99 ? '99+' : '$_totalUnread';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.redAccent,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.redAccent.withOpacity(0.4),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -72,39 +176,27 @@ class StartScreen extends StatelessWidget {
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 40),
-              ElevatedButton(
+              _buildMenuButton(
                 onPressed: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const TasksScreen()),
                   );
                 },
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: const Text('Продукты', style: TextStyle(fontSize: 18)),
+                label: 'Продукты',
               ),
               const SizedBox(height: 20),
-              ElevatedButton(
+              _buildMenuButton(
                 onPressed: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const RawMaterialsScreen()),
                   );
                 },
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: const Text('Сырьё', style: TextStyle(fontSize: 18)),
+                label: 'Сырьё',
               ),
               const SizedBox(height: 20),
-              ElevatedButton(
+              _buildMenuButton(
                 onPressed: () async {
                   final result = await Navigator.push(
                     context,
@@ -119,77 +211,52 @@ class StartScreen extends StatelessWidget {
                     );
                   }
                 },
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: const Text('Сканировать QR-код', style: TextStyle(fontSize: 18)),
+                label: 'Сканировать QR-код',
               ),
               const SizedBox(height: 20),
-              ElevatedButton(
+              _buildMenuButton(
                 onPressed: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const PhotoUploadScreen()),
                   );
                 },
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: const Text('Загрузить фото (датасет)', style: TextStyle(fontSize: 18)),
+                label: 'Загрузить фото (датасет)',
               ),
               const SizedBox(height: 20),
-              ElevatedButton(
+              _buildMenuButton(
                 onPressed: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const LiveColorCheckScreen()),
                   );
                 },
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: const Text('Проверка цвета (камера)', style: TextStyle(fontSize: 18)),
+                label: 'Проверка цвета (камера)',
               ),
               const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
+              _buildMenuButton(
+                onPressed: () async {
+                  await Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const ChatListScreen()),
                   );
+                  if (mounted) {
+                    setState(() => _isUnreadLoading = true);
+                    _loadTotalUnread();
+                  }
                 },
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: const Text('Чат', style: TextStyle(fontSize: 18)),
+                label: 'Чат',
+                badge: _buildUnreadBadge(),
               ),
               const SizedBox(height: 20),
-              ElevatedButton(
+              _buildMenuButton(
                 onPressed: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const ProfileScreen()),
                   );
                 },
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: const Text('Профиль', style: TextStyle(fontSize: 18)),
+                label: 'Профиль',
               ),
             ],
           ),
