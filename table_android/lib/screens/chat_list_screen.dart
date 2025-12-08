@@ -1,3 +1,4 @@
+// chat_list_screen.dart - вернем как было (без RealtimeManager)
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
@@ -29,10 +30,6 @@ class _ChatListScreenState extends State<ChatListScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    
-    // Проверяем статус Supabase клиента при запуске
-    print('[CHATLIST] Supabase client status: ${Supabase.instance.client.auth.currentSession}');
-    print('[CHATLIST] Supabase realtime status: ${Supabase.instance.client.realtime.isConnected}');
     _loadUserAndRooms();
   }
 
@@ -120,7 +117,6 @@ class _ChatListScreenState extends State<ChatListScreen>
             lastMessageTime: lastMessageTime,
           ),
         );
-
       }
 
       if (roomIds.isNotEmpty) {
@@ -142,21 +138,15 @@ class _ChatListScreenState extends State<ChatListScreen>
         error = null;
         _currentRoomIds = loadedRooms.map((room) => room.id).toSet();
       });
-      print('[LOAD] Rooms loaded: ${rooms.length}');
-      print('[LOAD] Current room ids: $_currentRoomIds');
       
-      // ОДИН вызов подписки после загрузки комнат
       if (resubscribe && mounted) {
         _subscribeToMessages();
       }
     } catch (e) {
-      // Если ошибка о том, что нет данных - это нормально (просто нет комнат)
-      // Если реальная ошибка - покажем её
       final errorString = e.toString();
       if (errorString.contains('no rows') || 
           errorString.contains('Empty result') ||
           errorString.contains('PostgrestException')) {
-        // Комнат нет - это нормально, показываем пустой список
         if (!mounted) return;
         setState(() {
           rooms = [];
@@ -173,13 +163,173 @@ class _ChatListScreenState extends State<ChatListScreen>
     }
   }
 
+  void _subscribeToMessages() {
+    if (_currentUserId == null) return;
+
+    print('[CHATLIST] Creating subscription');
+
+    // Отписываемся от старой
+    _realtimeSubscription?.unsubscribe();
+
+    try {
+      _realtimeSubscription = Supabase.instance.client
+          .channel('chat_list_${_currentUserId!}')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'messages',
+            callback: (payload) {
+              if (!mounted) return;
+              print('[CHATLIST] ✅ INSERT event received');
+
+              final record = payload.newRecord;
+
+              final roomId = record['room_id'] as String?;
+              final senderId = record['user_id'] as String?;
+              if (roomId == null || senderId == _currentUserId) return;
+
+              print('[CHATLIST] New message from other user in room $roomId');
+
+              // Немедленно обновляем счетчик
+              if (_currentRoomIds.contains(roomId)) {
+                _refreshRoomImmediately(roomId);
+              }
+            },
+          )
+          .subscribe(
+            (status, err) {
+              print('[CHATLIST] Subscription status: $status');
+              if (err != null) print('[CHATLIST] Error: ${err.toString()}');
+            },
+          );
+
+      print('[CHATLIST] Subscription created');
+    } catch (e) {
+      print('[CHATLIST] Error: $e');
+      Future.delayed(const Duration(seconds: 5), () {
+        if (mounted) _subscribeToMessages();
+      });
+    }
+  }
+
+  Future<void> _refreshRoomImmediately(String roomId) async {
+  if (_currentUserId == null) return;
+
+  try {
+    // Просто увеличиваем счетчик на 1 локально
+    setState(() {
+      rooms = rooms.map((room) {
+        if (room.id == roomId) {
+          final newCount = room.unreadCount + 1;
+          print('[IMMEDIATE] Room $roomId: ${room.unreadCount} -> $newCount');
+          return room.copyWith(unreadCount: newCount);
+        }
+        return room;
+      }).toList();
+    });
+
+    // Обновляем текущий набор ID комнат
+    _currentRoomIds = rooms.map((room) => room.id).toSet();
+
+    // Затем делаем полное обновление
+    await _refreshRoom(roomId); // Добавим await чтобы дождаться завершения
+  } catch (e) {
+    print('[IMMEDIATE] Error: $e');
+  }
+}
+
+  Future<void> _refreshRoom(String roomId) async {
+  if (_currentUserId == null) return;
+  print('[REFRESH] Starting refresh for room $roomId');
+
+  try {
+    final latestMessageFuture = Supabase.instance.client
+        .from('messages')
+        .select('text_content, created_at')
+        .eq('room_id', roomId)
+        .eq('deleted', false)
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    final readStateFuture = Supabase.instance.client
+        .from('room_read_states')
+        .select('last_read_at')
+        .eq('room_id', roomId)
+        .eq('user_id', _currentUserId!)
+        .maybeSingle();
+
+    final results = await Future.wait<dynamic>([
+      latestMessageFuture,
+      readStateFuture,
+    ]);
+
+    final latestMessage = results[0] as Map<String, dynamic>?;
+    final readState = results[1] as Map<String, dynamic>?;
+
+    final lastText = latestMessage?['text_content'] as String?;
+    final createdAtRaw = latestMessage?['created_at'] as String?;
+    final DateTime? createdAt =
+        createdAtRaw != null ? DateTime.parse(createdAtRaw) : null;
+
+    final lastReadAtRaw = readState?['last_read_at'] as String?;
+    final DateTime? lastReadAt =
+        lastReadAtRaw != null ? DateTime.parse(lastReadAtRaw) : null;
+
+    var unreadQuery = Supabase.instance.client
+        .from('messages')
+        .select('id')
+        .eq('room_id', roomId)
+        .eq('deleted', false)
+        .neq('user_id', _currentUserId!);
+
+    if (lastReadAt != null) {
+      unreadQuery = unreadQuery.gt('created_at', lastReadAt.toIso8601String());
+    }
+
+    final unreadCountResponse = await unreadQuery.count(CountOption.exact);
+    final unreadCount = unreadCountResponse.count ?? 0;
+
+    // Добавим лог для отладки
+    print('[REFRESH] Calculated unread count: $unreadCount for room $roomId');
+    
+    // Используем setState для обновления UI
+    if (!mounted) return;
+    setState(() {
+      rooms = rooms.map((room) {
+        if (room.id != roomId) return room;
+        
+        print('[REFRESH] Updating room $roomId with unread count: $unreadCount');
+        print('[REFRESH] Previous unread count: ${room.unreadCount}');
+        
+        return room.copyWith(
+          lastMessageText: (lastText != null && lastText.isNotEmpty)
+              ? lastText
+              : room.lastMessageText,
+          lastMessageTime: createdAt ?? room.lastMessageTime,
+          unreadCount: unreadCount, // Важно: используем вычисленное значение
+        );
+      }).toList();
+      
+      // После обновления выводим текущее состояние
+      final updatedRoom = rooms.firstWhere(
+        (r) => r.id == roomId,
+        orElse: () => Room(id: '', name: '', createdBy: '', createdAt: DateTime.now())
+      );
+      print('[REFRESH] After update - room $roomId unread: ${updatedRoom.unreadCount}');
+    });
+    
+  } catch (e) {
+    print('Failed to refresh room $roomId: $e');
+  }
+}
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _realtimeSubscription?.unsubscribe();
     super.dispose();
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -252,7 +402,6 @@ class _ChatListScreenState extends State<ChatListScreen>
                                     builder: (context) => ChatScreen(room: room),
                                   ),
                                 ).then((_) {
-                                  // После возвращения со страницы чата перезагружаем комнаты
                                   if (mounted) {
                                     _loadRooms();
                                   }
@@ -348,167 +497,5 @@ class _ChatListScreenState extends State<ChatListScreen>
         ),
       ),
     );
-  }
-
-  void _subscribeToMessages() {
-    if (_currentUserId == null) return;
-
-    print('[REALTIME] Creating subscription for ChatListScreen');
-
-    // Если уже есть активная подписка - ничего не делаем
-    if (_realtimeSubscription != null) {
-      print('[REALTIME] Subscription already exists and is active');
-      return;
-    }
-
-    // Отписываемся от старой
-    _realtimeSubscription?.unsubscribe();
-
-    try {
-      _realtimeSubscription = Supabase.instance.client
-          .channel('chat_list_${_currentUserId!}')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.insert,
-            schema: 'public',
-            table: 'messages',
-            callback: (payload) {
-              if (!mounted) return;
-              print('[CHATLIST] ✅ INSERT event received');
-
-              final record = payload.newRecord;
-
-              final roomId = record['room_id'] as String?;
-              final senderId = record['user_id'] as String?;
-              if (roomId == null || senderId == _currentUserId) return;
-
-              print('[CHATLIST] New message from other user in room $roomId');
-
-              // Немедленно обновляем счетчик
-              if (_currentRoomIds.contains(roomId)) {
-                _refreshRoomImmediately(roomId);
-              }
-            },
-          )
-          .subscribe(
-            (status, err) {
-              print('[CHATLIST] Subscription status: $status');
-              if (err != null) print('[CHATLIST] Error: ${err.toString()}');
-            },
-          );
-
-      print('[REALTIME] Subscription created');
-    } catch (e) {
-      print('[REALTIME] Error: $e');
-      // Попробовать переподписаться через 5 секунд
-      Future.delayed(const Duration(seconds: 5), () {
-        if (mounted) _subscribeToMessages();
-      });
-    }
-  }
-
-  Future<void> _refreshRoomImmediately(String roomId) async {
-    if (_currentUserId == null) return;
-
-    try {
-      // Просто увеличиваем счетчик на 1 локально
-      setState(() {
-        rooms = rooms.map((room) {
-          if (room.id == roomId) {
-            final newCount = room.unreadCount + 1;
-            print('[IMMEDIATE] Room $roomId: ${room.unreadCount} -> $newCount');
-            return room.copyWith(unreadCount: newCount);
-          }
-          return room;
-        }).toList();
-      });
-
-      // Затем делаем полное обновление (асинхронно)
-      _refreshRoom(roomId);
-    } catch (e) {
-      print('[IMMEDIATE] Error: $e');
-    }
-  }
-
-  Future<void> _refreshRoom(String roomId) async {
-    if (_currentUserId == null) return;
-    print('[REFRESH] Starting refresh for room $roomId');
-
-    try {
-      final latestMessageFuture = Supabase.instance.client
-          .from('messages')
-          .select('text_content, created_at')
-          .eq('room_id', roomId)
-          .eq('deleted', false)
-          .order('created_at', ascending: false)
-          .limit(1)
-          .maybeSingle();
-
-      final readStateFuture = Supabase.instance.client
-          .from('room_read_states')
-          .select('last_read_at')
-          .eq('room_id', roomId)
-          .eq('user_id', _currentUserId!)
-          .maybeSingle();
-
-      final results = await Future.wait<dynamic>([
-        latestMessageFuture,
-        readStateFuture,
-      ]);
-
-      final latestMessage = results[0] as Map<String, dynamic>?;
-      final readState = results[1] as Map<String, dynamic>?;
-
-      final lastText = latestMessage?['text_content'] as String?;
-      final createdAtRaw = latestMessage?['created_at'] as String?;
-      final DateTime? createdAt =
-          createdAtRaw != null ? DateTime.parse(createdAtRaw) : null;
-
-      final lastReadAtRaw = readState?['last_read_at'] as String?;
-      final DateTime? lastReadAt =
-          lastReadAtRaw != null ? DateTime.parse(lastReadAtRaw) : null;
-
-      var unreadQuery = Supabase.instance.client
-          .from('messages')
-          .select('id')
-          .eq('room_id', roomId)
-          .eq('deleted', false)
-          .neq('user_id', _currentUserId!);
-
-      if (lastReadAt != null) {
-        unreadQuery = unreadQuery.gt('created_at', lastReadAt.toIso8601String());
-      }
-
-      final unreadCountResponse = await unreadQuery.count(CountOption.exact);
-      final unreadCount = unreadCountResponse.count;
-
-      // Room is not active-aware now; use calculated unread count
-      final int finalUnreadCount = unreadCount;
-      print('[REFRESH] Room is not active-aware, using unread count: $unreadCount');
-      print('[REFRESH] Latest message: $lastText at $createdAt');
-      print('[REFRESH] Read state: $lastReadAt');
-      print('[REFRESH] Unread count query result: $unreadCount');
-      print('[REFRESH] Final unread count to set: $finalUnreadCount');
-      final oldRoom =
-          rooms.firstWhere((r) => r.id == roomId, orElse: () => Room(id: '', name: '', createdBy: '', createdAt: DateTime.now()));
-      print('[REFRESH] Old unread count for this room: ${oldRoom.unreadCount}');
-      print('[REFRESH] New unread count calculated: $unreadCount');
-      print('[REFRESH] Will set unread to: $finalUnreadCount');
-
-      if (!mounted) return;
-      setState(() {
-        rooms = rooms.map((room) {
-          if (room.id != roomId) return room;
-          return room.copyWith(
-            lastMessageText: (lastText != null && lastText.isNotEmpty)
-                ? lastText
-                : room.lastMessageText,
-            lastMessageTime: createdAt ?? room.lastMessageTime,
-            unreadCount: finalUnreadCount,
-          );
-        }).toList();
-      });
-    } catch (e) {
-      print('Failed to refresh room $roomId: $e');
-    }
   }
 }

@@ -7,6 +7,7 @@ import '../models/message.dart';
 import '../models/room.dart';
 import '../services/local_storage.dart' as chat_storage;
 import '../services/chat_unread_service.dart';
+import '../services/realtime_manager.dart';
 
 class ChatScreen extends StatefulWidget {
   final Room room;
@@ -25,7 +26,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<Message> messages = [];
   bool isLoading = true;
   String? error;
-  late RealtimeChannel _messagesSubscription;
+  Function(PostgresChangePayload)? _roomListener;
   bool isUploading = false;
   String? _currentUserId;
   String? _currentUserName;
@@ -91,40 +92,13 @@ class _ChatScreenState extends State<ChatScreen> {
   void _subscribeToMessages() {
     try {
       debugPrint('Subscribing to messages for room ${widget.room.id}');
-      
-      // Слушаем все события: INSERT, UPDATE, DELETE
-      _messagesSubscription = Supabase.instance.client
-          .channel('chat_screen_messages_${widget.room.id}')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.insert,
-            schema: 'public',
-            table: 'messages',
-            callback: (payload) {
-              debugPrint('=== INSERT EVENT FIRED ===');
-              _handleRealtimeEvent(payload);
-            },
-          )
-          .onPostgresChanges(
-            event: PostgresChangeEvent.update,
-            schema: 'public',
-            table: 'messages',
-            callback: (payload) {
-              debugPrint('=== UPDATE EVENT FIRED ===');
-              _handleRealtimeEvent(payload);
-            },
-          )
-          .onPostgresChanges(
-            event: PostgresChangeEvent.delete,
-            schema: 'public',
-            table: 'messages',
-            callback: (payload) {
-              debugPrint('=== DELETE EVENT FIRED ===');
-              _handleRealtimeEvent(payload);
-            },
-          )
-          .subscribe();
-
-      debugPrint('Subscription successful');
+      final listener = (PostgresChangePayload payload) {
+        debugPrint('=== REALTIME EVENT VIA MANAGER ===');
+        _handleRealtimeEvent(payload);
+      };
+      _roomListener = listener;
+      RealtimeManager().addRoomListener(widget.room.id, listener);
+      debugPrint('Subscription via RealtimeManager successful');
     } catch (e) {
       debugPrint('Exception in _subscribeToMessages: $e');
     }
@@ -799,7 +773,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    _messagesSubscription.unsubscribe();
+    if (_roomListener != null) {
+      RealtimeManager().removeRoomListener(widget.room.id, _roomListener!);
+    }
     _stopPolling();
     _messageController.dispose();
     _scrollController.dispose();

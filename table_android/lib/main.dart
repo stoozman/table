@@ -1,4 +1,5 @@
 // main.dart исправлен: только один блок кнопок, все виджеты внутри Column и build, нет дублирования
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -12,8 +13,8 @@ import 'screens/live_color_check_screen.dart';
 import 'screens/chat_list_screen.dart';
 import 'screens/profile_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'services/local_storage.dart' as chat_storage;
 import 'services/chat_unread_service.dart';
+import 'services/main_unread_tracker.dart';
 
 void main() async {
   print('main: start');
@@ -35,6 +36,10 @@ void main() async {
     } catch (e) {
       print('[MAIN] Error creating anonymous session: $e');
     }
+
+    // Инициализируем главный трекер и связываем с ChatUnreadService
+    final mainTracker = MainUnreadTracker();
+    ChatUnreadService.setMainTracker(mainTracker);
     print('main: Supabase initialized');
     runApp(const MyApp());
   } catch (e) {
@@ -75,31 +80,50 @@ class StartScreen extends StatefulWidget {
 }
 
 class _StartScreenState extends State<StartScreen> {
+  final MainUnreadTracker _unreadTracker = MainUnreadTracker();
+  StreamSubscription<int>? _unreadSubscription;
   int _totalUnread = 0;
   bool _isUnreadLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadTotalUnread();
+    _initUnreadTracker();
   }
 
-  Future<void> _loadTotalUnread() async {
+  Future<void> _initUnreadTracker() async {
     try {
-      final userId = await chat_storage.ChatUserStorage.getUserId();
-      final count = await ChatUnreadService.fetchTotalUnread(userId);
-      if (!mounted) return;
-      setState(() {
-        _totalUnread = count;
-        _isUnreadLoading = false;
+      await _unreadTracker.initialize();
+
+      _unreadSubscription = _unreadTracker.totalUnreadStream.listen((total) {
+        if (mounted) {
+          setState(() {
+            _totalUnread = total;
+            _isUnreadLoading = false;
+          });
+        }
       });
+
+      if (mounted) {
+        setState(() {
+          _totalUnread = _unreadTracker.currentTotalUnread;
+          _isUnreadLoading = false;
+        });
+      }
     } catch (e) {
-      debugPrint('Failed to load unread count: $e');
+      debugPrint('Failed to init unread tracker: $e');
       if (!mounted) return;
       setState(() {
         _isUnreadLoading = false;
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _unreadSubscription?.cancel();
+    _unreadTracker.dispose();
+    super.dispose();
   }
 
   Widget _buildMenuButton({
@@ -249,8 +273,7 @@ class _StartScreenState extends State<StartScreen> {
                     MaterialPageRoute(builder: (context) => const ChatListScreen()),
                   );
                   if (mounted) {
-                    setState(() => _isUnreadLoading = true);
-                    _loadTotalUnread();
+                    _unreadTracker.refresh();
                   }
                 },
                 label: 'Чат',

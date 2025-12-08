@@ -1,7 +1,13 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'main_unread_tracker.dart';
 
 class ChatUnreadService {
   static final _client = Supabase.instance.client;
+  static MainUnreadTracker? _mainTracker;
+
+  static void setMainTracker(MainUnreadTracker tracker) {
+    _mainTracker = tracker;
+  }
 
   static Future<Map<String, DateTime?>> _fetchReadStates(String userId) async {
     final response = await _client
@@ -41,7 +47,7 @@ class ChatUnreadService {
       }
 
       final countResponse = await query.count(CountOption.exact);
-      final int count = countResponse.count ?? 0;
+      final int count = countResponse.count;
       return MapEntry<String, int>(roomId, count);
     }).toList();
 
@@ -102,5 +108,18 @@ class ChatUnreadService {
       'last_read_at': lastMessageAt.toUtc().toIso8601String(),
       'last_read_message_id': lastMessageId,
     }, onConflict: 'room_id,user_id');
+
+    _notifyUnreadTracker();
+    _mainTracker?.refresh();
+    // ignore: avoid_print
+    print('[CHAT_UNREAD] Main tracker notified');
+  }
+
+  static void _notifyUnreadTracker() {
+    // Здесь можно вызывать глобальный трекер через Event Bus / Provider
+    // В текущей реализации оставляем лог для отладки
+    // Чтобы избежать прямой зависимости от UI-слоя.
+    // ignore: avoid_print
+    print('[CHAT_UNREAD] Notifying tracker to refresh');
   }
 }
