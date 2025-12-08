@@ -94,7 +94,7 @@ class _ChatScreenState extends State<ChatScreen> {
       
       // Слушаем все события: INSERT, UPDATE, DELETE
       _messagesSubscription = Supabase.instance.client
-          .channel('public:messages')
+          .channel('chat_screen_messages_${widget.room.id}')
           .onPostgresChanges(
             event: PostgresChangeEvent.insert,
             schema: 'public',
@@ -151,14 +151,14 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _pollNewMessages() async {
     try {
       // Получаем ВСЕ сообщения в комнате (не только новые) - но только не удаленные
-      final resp = await Supabase.instance.client
+      final List<dynamic> resp = await Supabase.instance.client
           .from('messages')
           .select()
           .eq('room_id', widget.room.id)
           .eq('deleted', false)  // Исключаем удаленные сообщения
           .order('created_at', ascending: true);
 
-      if (resp != null && resp is List) {
+      if (resp.isNotEmpty) {
         final fetchedMessages = resp.map((j) => Message.fromJson(j)).toList();
         
         // Проверяем, был ли пользователь в конце списка перед обновлением
@@ -361,7 +361,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.isEmpty) return;
 
     try {
-      final resp = await Supabase.instance.client
+      final List<dynamic> resp = await Supabase.instance.client
           .from('messages')
           .insert({
             'room_id': widget.room.id,
@@ -373,7 +373,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
       _messageController.clear();
 
-      if (resp != null && resp is List && resp.isNotEmpty) {
+      if (resp.isNotEmpty) {
         try {
           final created = Message.fromJson(resp[0]);
           setState(() {
@@ -381,7 +381,22 @@ class _ChatScreenState extends State<ChatScreen> {
             messages.add(created);
           });
           _scrollToBottom();
-          _markRoomAsRead();
+          if (_currentUserId != null && messages.isNotEmpty) {
+            final latest = messages.last;
+            try {
+              await ChatUnreadService.markRoomAsRead(
+                roomId: widget.room.id,
+                userId: _currentUserId!,
+                lastMessageAt: latest.createdAt,
+                lastMessageId: latest.id,
+              );
+              _lastReadMessageId = latest.id;
+              debugPrint(
+                  '[MARK_READ] Forced room as read after sending message: ${latest.id}');
+            } catch (e) {
+              debugPrint('[MARK_READ] Failed to mark room as read: $e');
+            }
+          }
         } catch (e) {
           debugPrint('Failed to parse created message: $e');
         }
@@ -429,7 +444,7 @@ class _ChatScreenState extends State<ChatScreen> {
           .getPublicUrl(storagePath);
 
       // Сохраняем сообщение с медиа в БД
-      final resp = await Supabase.instance.client.from('messages').insert({
+      final List<dynamic> resp = await Supabase.instance.client.from('messages').insert({
         'room_id': widget.room.id,
         'user_id': _currentUserId,
         'user_name': _currentUserName,
@@ -438,7 +453,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'file_name': file.name,
       }).select();
 
-      if (resp != null && resp is List && resp.isNotEmpty) {
+      if (resp.isNotEmpty) {
         try {
           final created = Message.fromJson(resp[0]);
           setState(() {

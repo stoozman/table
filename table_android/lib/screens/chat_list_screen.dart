@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
 import '../models/room.dart';
 import '../services/local_storage.dart' as chat_storage;
 import '../services/chat_unread_service.dart';
@@ -28,6 +29,10 @@ class _ChatListScreenState extends State<ChatListScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    
+    // Проверяем статус Supabase клиента при запуске
+    print('[CHATLIST] Supabase client status: ${Supabase.instance.client.auth.currentSession}');
+    print('[CHATLIST] Supabase realtime status: ${Supabase.instance.client.realtime.isConnected}');
     _loadUserAndRooms();
   }
 
@@ -40,11 +45,12 @@ class _ChatListScreenState extends State<ChatListScreen>
   }
 
   Future<void> _loadUserAndRooms() async {
+    if (!mounted) return;
     try {
       _currentUserId = await chat_storage.ChatUserStorage.getUserId();
       await _loadRooms();
-      _subscribeToMessages();
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         isLoading = false;
         error = 'Ошибка загрузки: $e';
@@ -52,8 +58,10 @@ class _ChatListScreenState extends State<ChatListScreen>
     }
   }
 
-  Future<void> _loadRooms() async {
+  Future<void> _loadRooms({bool resubscribe = true}) async {
+    if (!mounted) return;
     try {
+      if (!mounted) return;
       setState(() {
         isLoading = true;
         error = null;
@@ -73,7 +81,6 @@ class _ChatListScreenState extends State<ChatListScreen>
 
       List<Room> loadedRooms = [];
       final List<String> roomIds = [];
-      final List<Future<void>> ensureFutures = [];
 
       for (var item in response) {
         final roomData = item['rooms'] as Map<String, dynamic>;
@@ -114,17 +121,6 @@ class _ChatListScreenState extends State<ChatListScreen>
           ),
         );
 
-        ensureFutures.add(
-          ChatUnreadService.ensureReadState(
-            roomId: room.id,
-            userId: _currentUserId!,
-            lastMessageAt: lastMessageTime,
-          ),
-        );
-      }
-
-      if (ensureFutures.isNotEmpty) {
-        await Future.wait(ensureFutures);
       }
 
       if (roomIds.isNotEmpty) {
@@ -139,12 +135,20 @@ class _ChatListScreenState extends State<ChatListScreen>
             .toList();
       }
 
+      if (!mounted) return;
       setState(() {
         rooms = loadedRooms;
         isLoading = false;
         error = null;
         _currentRoomIds = loadedRooms.map((room) => room.id).toSet();
       });
+      print('[LOAD] Rooms loaded: ${rooms.length}');
+      print('[LOAD] Current room ids: $_currentRoomIds');
+      
+      // ОДИН вызов подписки после загрузки комнат
+      if (resubscribe && mounted) {
+        _subscribeToMessages();
+      }
     } catch (e) {
       // Если ошибка о том, что нет данных - это нормально (просто нет комнат)
       // Если реальная ошибка - покажем её
@@ -153,12 +157,14 @@ class _ChatListScreenState extends State<ChatListScreen>
           errorString.contains('Empty result') ||
           errorString.contains('PostgrestException')) {
         // Комнат нет - это нормально, показываем пустой список
+        if (!mounted) return;
         setState(() {
           rooms = [];
           isLoading = false;
           error = null;
         });
       } else {
+        if (!mounted) return;
         setState(() {
           isLoading = false;
           error = 'Ошибка загрузки комнат: $e';
@@ -173,6 +179,7 @@ class _ChatListScreenState extends State<ChatListScreen>
     _realtimeSubscription?.unsubscribe();
     super.dispose();
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -246,7 +253,9 @@ class _ChatListScreenState extends State<ChatListScreen>
                                   ),
                                 ).then((_) {
                                   // После возвращения со страницы чата перезагружаем комнаты
-                                  _loadRooms();
+                                  if (mounted) {
+                                    _loadRooms();
+                                  }
                                 });
                               },
                               title: Text(
@@ -305,7 +314,9 @@ class _ChatListScreenState extends State<ChatListScreen>
             context,
             MaterialPageRoute(builder: (context) => const NewChatScreen()),
           ).then((_) {
-            _loadRooms();
+            if (mounted) {
+              _loadRooms();
+            }
           });
         },
         tooltip: 'Создать чат',
@@ -340,51 +351,90 @@ class _ChatListScreenState extends State<ChatListScreen>
   }
 
   void _subscribeToMessages() {
-    if (_realtimeSubscription != null || _currentUserId == null) return;
+    if (_currentUserId == null) return;
 
-    _realtimeSubscription = Supabase.instance.client
-        .channel('public:messages_list_${_currentUserId!}')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'messages',
-          callback: (payload) {
-            final record = payload.newRecord;
-            if (record == null) return;
-            final roomId = record['room_id'] as String?;
-            if (roomId == null) return;
+    print('[REALTIME] Creating subscription for ChatListScreen');
 
-            if (_currentRoomIds.contains(roomId)) {
-              _refreshRoom(roomId);
-            } else {
-              _loadRooms();
-            }
-          },
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.update,
-          schema: 'public',
-          table: 'room_read_states',
-          callback: (payload) {
-            final record = payload.newRecord ?? payload.oldRecord;
-            if (record == null) return;
-            final userId = record['user_id'] as String?;
-            if (userId != _currentUserId) return;
-            final roomId = record['room_id'] as String?;
-            if (roomId == null) return;
-            if (_currentRoomIds.contains(roomId)) {
-              _refreshRoom(roomId);
-            }
-          },
-        )
-        .subscribe();
+    // Если уже есть активная подписка - ничего не делаем
+    if (_realtimeSubscription != null) {
+      print('[REALTIME] Subscription already exists and is active');
+      return;
+    }
+
+    // Отписываемся от старой
+    _realtimeSubscription?.unsubscribe();
+
+    try {
+      _realtimeSubscription = Supabase.instance.client
+          .channel('chat_list_${_currentUserId!}')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'messages',
+            callback: (payload) {
+              if (!mounted) return;
+              print('[CHATLIST] ✅ INSERT event received');
+
+              final record = payload.newRecord;
+
+              final roomId = record['room_id'] as String?;
+              final senderId = record['user_id'] as String?;
+              if (roomId == null || senderId == _currentUserId) return;
+
+              print('[CHATLIST] New message from other user in room $roomId');
+
+              // Немедленно обновляем счетчик
+              if (_currentRoomIds.contains(roomId)) {
+                _refreshRoomImmediately(roomId);
+              }
+            },
+          )
+          .subscribe(
+            (status, err) {
+              print('[CHATLIST] Subscription status: $status');
+              if (err != null) print('[CHATLIST] Error: ${err.toString()}');
+            },
+          );
+
+      print('[REALTIME] Subscription created');
+    } catch (e) {
+      print('[REALTIME] Error: $e');
+      // Попробовать переподписаться через 5 секунд
+      Future.delayed(const Duration(seconds: 5), () {
+        if (mounted) _subscribeToMessages();
+      });
+    }
+  }
+
+  Future<void> _refreshRoomImmediately(String roomId) async {
+    if (_currentUserId == null) return;
+
+    try {
+      // Просто увеличиваем счетчик на 1 локально
+      setState(() {
+        rooms = rooms.map((room) {
+          if (room.id == roomId) {
+            final newCount = room.unreadCount + 1;
+            print('[IMMEDIATE] Room $roomId: ${room.unreadCount} -> $newCount');
+            return room.copyWith(unreadCount: newCount);
+          }
+          return room;
+        }).toList();
+      });
+
+      // Затем делаем полное обновление (асинхронно)
+      _refreshRoom(roomId);
+    } catch (e) {
+      print('[IMMEDIATE] Error: $e');
+    }
   }
 
   Future<void> _refreshRoom(String roomId) async {
     if (_currentUserId == null) return;
+    print('[REFRESH] Starting refresh for room $roomId');
 
     try {
-      final latestMessage = await Supabase.instance.client
+      final latestMessageFuture = Supabase.instance.client
           .from('messages')
           .select('text_content, created_at')
           .eq('room_id', roomId)
@@ -393,20 +443,56 @@ class _ChatListScreenState extends State<ChatListScreen>
           .limit(1)
           .maybeSingle();
 
-      final unreadMap = await ChatUnreadService.fetchUnreadCounts(
-        _currentUserId!,
-        [roomId],
-      );
+      final readStateFuture = Supabase.instance.client
+          .from('room_read_states')
+          .select('last_read_at')
+          .eq('room_id', roomId)
+          .eq('user_id', _currentUserId!)
+          .maybeSingle();
 
-      final lastText = latestMessage != null
-          ? latestMessage['text_content'] as String?
-          : null;
-      final createdAtRaw = latestMessage != null
-          ? latestMessage['created_at'] as String?
-          : null;
+      final results = await Future.wait<dynamic>([
+        latestMessageFuture,
+        readStateFuture,
+      ]);
+
+      final latestMessage = results[0] as Map<String, dynamic>?;
+      final readState = results[1] as Map<String, dynamic>?;
+
+      final lastText = latestMessage?['text_content'] as String?;
+      final createdAtRaw = latestMessage?['created_at'] as String?;
       final DateTime? createdAt =
           createdAtRaw != null ? DateTime.parse(createdAtRaw) : null;
-      final unreadCount = unreadMap[roomId];
+
+      final lastReadAtRaw = readState?['last_read_at'] as String?;
+      final DateTime? lastReadAt =
+          lastReadAtRaw != null ? DateTime.parse(lastReadAtRaw) : null;
+
+      var unreadQuery = Supabase.instance.client
+          .from('messages')
+          .select('id')
+          .eq('room_id', roomId)
+          .eq('deleted', false)
+          .neq('user_id', _currentUserId!);
+
+      if (lastReadAt != null) {
+        unreadQuery = unreadQuery.gt('created_at', lastReadAt.toIso8601String());
+      }
+
+      final unreadCountResponse = await unreadQuery.count(CountOption.exact);
+      final unreadCount = unreadCountResponse.count;
+
+      // Room is not active-aware now; use calculated unread count
+      final int finalUnreadCount = unreadCount;
+      print('[REFRESH] Room is not active-aware, using unread count: $unreadCount');
+      print('[REFRESH] Latest message: $lastText at $createdAt');
+      print('[REFRESH] Read state: $lastReadAt');
+      print('[REFRESH] Unread count query result: $unreadCount');
+      print('[REFRESH] Final unread count to set: $finalUnreadCount');
+      final oldRoom =
+          rooms.firstWhere((r) => r.id == roomId, orElse: () => Room(id: '', name: '', createdBy: '', createdAt: DateTime.now()));
+      print('[REFRESH] Old unread count for this room: ${oldRoom.unreadCount}');
+      print('[REFRESH] New unread count calculated: $unreadCount');
+      print('[REFRESH] Will set unread to: $finalUnreadCount');
 
       if (!mounted) return;
       setState(() {
@@ -417,12 +503,12 @@ class _ChatListScreenState extends State<ChatListScreen>
                 ? lastText
                 : room.lastMessageText,
             lastMessageTime: createdAt ?? room.lastMessageTime,
-            unreadCount: unreadCount ?? room.unreadCount,
+            unreadCount: finalUnreadCount,
           );
         }).toList();
       });
     } catch (e) {
-      debugPrint('Failed to refresh room $roomId: $e');
+      print('Failed to refresh room $roomId: $e');
     }
   }
 }

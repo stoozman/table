@@ -5,14 +5,12 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'models/task.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'screens/raw_materials_screen.dart';
 import 'screens/qr_scan_screen.dart';
 import 'screens/raw_material_details_screen.dart';
 import 'screens/photo_upload_screen.dart';
 import 'screens/live_color_check_screen.dart';
 import 'screens/chat_list_screen.dart';
 import 'screens/profile_screen.dart';
-import 'dart:convert';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'services/local_storage.dart' as chat_storage;
 import 'services/chat_unread_service.dart';
@@ -26,7 +24,17 @@ void main() async {
     await Supabase.initialize(
       url: dotenv.env['SUPABASE_URL']!,
       anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
+      realtimeClientOptions: const RealtimeClientOptions(
+        logLevel: RealtimeLogLevel.info,
+      ),
     );
+    // Добавляем анонимную сессию для Realtime
+    try {
+      await Supabase.instance.client.auth.signInAnonymously();
+      print('[MAIN] Anonymous session created');
+    } catch (e) {
+      print('[MAIN] Error creating anonymous session: $e');
+    }
     print('main: Supabase initialized');
     runApp(const MyApp());
   } catch (e) {

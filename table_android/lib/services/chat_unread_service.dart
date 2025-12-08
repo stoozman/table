@@ -33,7 +33,8 @@ class ChatUnreadService {
           .from('messages')
           .select('id')
           .eq('room_id', roomId)
-          .eq('deleted', false);
+          .eq('deleted', false)
+          .neq('user_id', userId);
 
       if (lastReadAt != null) {
         query = query.gt('created_at', lastReadAt.toIso8601String());
@@ -77,11 +78,13 @@ class ChatUnreadService {
         .maybeSingle();
 
     if (existing == null) {
-      final timestamp = (lastMessageAt ?? DateTime.now()).toUtc().toIso8601String();
+      final initialTimestamp = lastMessageAt != null
+          ? lastMessageAt.toUtc().subtract(const Duration(days: 1))
+          : DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
       await _client.from('room_read_states').insert({
         'room_id': roomId,
         'user_id': userId,
-        'last_read_at': timestamp,
+        'last_read_at': initialTimestamp.toIso8601String(),
         'last_read_message_id': null,
       });
     }
