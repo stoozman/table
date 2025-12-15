@@ -45,6 +45,7 @@ dependencies:
   image: ^4.5.4
   camera: ^0.10.6
   shared_preferences: ^2.2.0
+  onesignal_flutter: ^5.2.0
 
 dev_dependencies:
   flutter_test:

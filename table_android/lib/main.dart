@@ -15,6 +15,7 @@ import 'screens/profile_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'services/chat_unread_service.dart';
 import 'services/main_unread_tracker.dart';
+import 'services/chat_push_token_service.dart';
 
 void main() async {
   print('main: start');
@@ -35,6 +36,12 @@ void main() async {
       print('[MAIN] Anonymous session created');
     } catch (e) {
       print('[MAIN] Error creating anonymous session: $e');
+    }
+
+    try {
+      await ChatPushTokenService.initAndRegister();
+    } catch (e) {
+      print('[MAIN] Error registering push token: $e');
     }
 
     // Инициализируем главный трекер и связываем с ChatUnreadService

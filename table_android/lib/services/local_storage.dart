@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:math';
 
 class ChatUserStorage {
@@ -27,6 +28,19 @@ class ChatUserStorage {
   static Future<void> setUserName(String newUserName) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_userNameKey, newUserName);
+
+    try {
+      final userId = await getUserId();
+      await Supabase.instance.client.from('chat_users').upsert(
+        {
+          'user_id': userId,
+          'user_name': newUserName,
+        },
+        onConflict: 'user_id',
+      );
+    } catch (_) {
+      // ignore
+    }
   }
 
   static Future<String> getUserId() async {

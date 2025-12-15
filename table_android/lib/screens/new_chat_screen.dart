@@ -31,15 +31,14 @@ class _NewChatScreenState extends State<NewChatScreen> {
       _currentUserName = await chat_storage.ChatUserStorage.getUserName();
 
       // Сначала убедимся, что текущий пользователь есть в chat_users
-      try {
-        await Supabase.instance.client.from('chat_users').insert({
+      // и что актуальное имя синхронизировано (без дублей)
+      await Supabase.instance.client.from('chat_users').upsert(
+        {
           'user_id': _currentUserId,
           'user_name': _currentUserName,
-        });
-      } catch (e) {
-        // Пользователь уже существует, это нормально
-        debugPrint('User already exists in chat_users');
-      }
+        },
+        onConflict: 'user_id',
+      );
 
       // Загружаем всех пользователей чата
       final response = await Supabase.instance.client

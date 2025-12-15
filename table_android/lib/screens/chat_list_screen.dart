@@ -26,6 +26,10 @@ class _ChatListScreenState extends State<ChatListScreen>
   RealtimeChannel? _realtimeSubscription;
   Set<String> _currentRoomIds = {};
 
+  static const Duration _supabaseTimeout = Duration(seconds: 30);
+
+  bool _isHydrating = false;
+
   @override
   void initState() {
     super.initState();
@@ -39,6 +43,97 @@ class _ChatListScreenState extends State<ChatListScreen>
       debugPrint('ChatListScreen resumed - reloading rooms');
       _loadRooms();
     }
+  }
+
+  void _hydrateRooms(List<String> roomIds) {
+    if (_currentUserId == null) return;
+    if (_isHydrating) return;
+    if (roomIds.isEmpty) return;
+
+    _isHydrating = true;
+    () async {
+      try {
+        final String userId = _currentUserId!;
+
+        final unreadMapFuture = ChatUnreadService.fetchUnreadCounts(userId, roomIds)
+            .timeout(_supabaseTimeout);
+
+        final detailFutures = roomIds.map((roomId) async {
+          int? memberCountValue;
+          String? lastMessageText;
+          DateTime? lastMessageTime;
+
+          try {
+            final memberCount = await Supabase.instance.client
+                .from('room_members')
+                .select('user_id')
+                .eq('room_id', roomId)
+                .count(CountOption.exact)
+                .timeout(_supabaseTimeout);
+            memberCountValue = memberCount.count;
+          } catch (e) {
+            debugPrint(
+                'ChatListScreen: failed to load memberCount for room=$roomId: $e');
+          }
+
+          try {
+            final messagesResponse = await Supabase.instance.client
+                .from('messages')
+                .select('text_content, created_at')
+                .eq('room_id', roomId)
+                .eq('deleted', false)
+                .order('created_at', ascending: false)
+                .limit(1)
+                .timeout(_supabaseTimeout);
+
+            if (messagesResponse.isNotEmpty) {
+              lastMessageText = messagesResponse[0]['text_content'] as String?;
+              lastMessageTime = DateTime.parse(
+                messagesResponse[0]['created_at'] as String,
+              );
+            }
+          } catch (e) {
+            debugPrint(
+                'ChatListScreen: failed to load lastMessage for room=$roomId: $e');
+          }
+
+          return <String, dynamic>{
+            'room_id': roomId,
+            'memberCount': memberCountValue,
+            'lastMessageText': lastMessageText,
+            'lastMessageTime': lastMessageTime,
+          };
+        }).toList();
+
+        final results = await Future.wait<dynamic>([
+          unreadMapFuture,
+          Future.wait<Map<String, dynamic>>(detailFutures),
+        ]);
+
+        final unreadMap = results[0] as Map<String, int>;
+        final details = results[1] as List<Map<String, dynamic>>;
+
+        if (!mounted) return;
+        setState(() {
+          for (final d in details) {
+            final roomId = d['room_id'] as String;
+            rooms = rooms.map((room) {
+              if (room.id != roomId) return room;
+              return room.copyWith(
+                memberCount: d['memberCount'] as int?,
+                lastMessageText: d['lastMessageText'] as String?,
+                lastMessageTime: d['lastMessageTime'] as DateTime?,
+                unreadCount: unreadMap[roomId] ?? room.unreadCount,
+              );
+            }).toList();
+          }
+        });
+      } catch (e) {
+        debugPrint('ChatListScreen: hydrate failed: $e');
+      } finally {
+        _isHydrating = false;
+      }
+    }();
   }
 
   Future<void> _loadUserAndRooms() async {
@@ -64,72 +159,45 @@ class _ChatListScreenState extends State<ChatListScreen>
         error = null;
       });
 
-      // Получаем комнаты, в которых пользователь состоит
-      final response = await Supabase.instance.client
+      // Получаем комнаты, в которых пользователь состоит.
+      // Не используем PostgREST join (rooms!inner), т.к. он требует FK relationship.
+      final membersResponse = await Supabase.instance.client
           .from('room_members')
-          .select(
-            '''
-            room_id,
-            rooms!inner(id, name, created_by, created_at, updated_at)
-            '''
-          )
+          .select('room_id, joined_at')
           .eq('user_id', _currentUserId!)
-          .order('joined_at', ascending: false);
+          .order('joined_at', ascending: false)
+          .timeout(_supabaseTimeout);
 
-      List<Room> loadedRooms = [];
-      final List<String> roomIds = [];
+      final List<String> roomIds = membersResponse
+          .map<String>((row) => row['room_id'] as String)
+          .toList();
 
-      for (var item in response) {
-        final roomData = item['rooms'] as Map<String, dynamic>;
-        final room = Room.fromJson(roomData);
-        roomIds.add(room.id);
-
-        // Получаем количество участников
-        final memberCount = await Supabase.instance.client
-            .from('room_members')
-            .select('user_id')
-            .eq('room_id', room.id)
-            .count(CountOption.exact);
-
-        // Получаем последнее сообщение
-        final messagesResponse = await Supabase.instance.client
-            .from('messages')
-            .select('text_content, created_at')
-            .eq('room_id', room.id)
-            .eq('deleted', false)
-            .order('created_at', ascending: false)
-            .limit(1);
-
-        String? lastMessageText;
-        DateTime? lastMessageTime;
-
-        if (messagesResponse.isNotEmpty) {
-          lastMessageText = messagesResponse[0]['text_content'] as String?;
-          lastMessageTime = DateTime.parse(
-            messagesResponse[0]['created_at'] as String,
-          );
-        }
-
-        loadedRooms.add(
-          room.copyWith(
-            memberCount: memberCount.count,
-            lastMessageText: lastMessageText,
-            lastMessageTime: lastMessageTime,
-          ),
-        );
+      if (roomIds.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          rooms = [];
+          isLoading = false;
+          error = null;
+          _currentRoomIds = {};
+        });
+        return;
       }
 
-      if (roomIds.isNotEmpty) {
-        final unreadMap =
-            await ChatUnreadService.fetchUnreadCounts(_currentUserId!, roomIds);
-        loadedRooms = loadedRooms
-            .map(
-              (room) => room.copyWith(
-                unreadCount: unreadMap[room.id] ?? 0,
-              ),
-            )
-            .toList();
-      }
+      final roomsResponse = await Supabase.instance.client
+          .from('rooms')
+          .select('id, name, created_by, created_at, updated_at')
+          .inFilter('id', roomIds)
+          .timeout(_supabaseTimeout);
+
+      final roomsById = <String, Room>{
+        for (final row in (roomsResponse as List))
+          (row['id'] as String): Room.fromJson(row as Map<String, dynamic>),
+      };
+
+      final List<Room> loadedRooms = roomIds
+          .map((roomId) => roomsById[roomId])
+          .whereType<Room>()
+          .toList();
 
       if (!mounted) return;
       setState(() {
@@ -138,13 +206,28 @@ class _ChatListScreenState extends State<ChatListScreen>
         error = null;
         _currentRoomIds = loadedRooms.map((room) => room.id).toSet();
       });
-      
+
+      _hydrateRooms(roomIds);
+
       if (resubscribe && mounted) {
         _subscribeToMessages();
       }
     } catch (e) {
+      if (e is TimeoutException) {
+        if (!mounted) return;
+        setState(() {
+          isLoading = false;
+          if (rooms.isEmpty) {
+            error =
+                'Таймаут при загрузке чатов. Проверь интернет и доступность Supabase.';
+          } else {
+            error = null;
+          }
+        });
+        return;
+      }
       final errorString = e.toString();
-      if (errorString.contains('no rows') || 
+      if (errorString.contains('no rows') ||
           errorString.contains('Empty result') ||
           errorString.contains('PostgrestException')) {
         if (!mounted) return;
