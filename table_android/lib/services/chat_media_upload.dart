@@ -36,18 +36,26 @@ class ChatMediaUpload {
     required String bucketName,
   }) async {
     try {
+      debugPrint('=== UPLOAD START ===');
+      debugPrint('File path: ${file.path}');
+      debugPrint('File name: ${file.name}');
+      
       final bytes = await file.readAsBytes();
+      debugPrint('File size: ${bytes.length} bytes (${(bytes.length / 1024 / 1024).toStringAsFixed(2)} MB)');
 
       final fileName =
           '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
       final path = 'chat/$roomId/$userId/$fileName';
+      debugPrint('Upload path: $path');
 
       final contentType =
           file.mimeType ??
           (file.path.endsWith('.mp4')
               ? 'video/mp4'
               : 'image/jpeg');
+      debugPrint('Content type: $contentType');
 
+      debugPrint('Starting upload to Supabase...');
       await Supabase.instance.client.storage
           .from(bucketName)
           .uploadBinary(
@@ -58,10 +66,13 @@ class ChatMediaUpload {
               upsert: false,
             ),
           );
+      debugPrint('Upload completed successfully');
 
-      return Supabase.instance.client.storage
+      final publicUrl = Supabase.instance.client.storage
           .from(bucketName)
           .getPublicUrl(path);
+      debugPrint('Public URL: $publicUrl');
+      return publicUrl;
     } catch (e, st) {
       debugPrint('❌ uploadMedia error: $e');
       debugPrint('$st');

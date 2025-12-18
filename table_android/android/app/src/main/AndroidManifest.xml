@@ -6,6 +6,9 @@
     <!-- 📷 Камера -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- 🎤 Микрофон для записи аудио при видео -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <!-- 🖼️ Галерея и видео (Android 13+) -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />

@@ -11,6 +11,7 @@ import '../services/local_storage.dart' as chat_storage;
 import '../services/chat_unread_service.dart';
 import '../services/realtime_manager.dart';
 import '../services/chat_media_upload.dart';
+import '../services/camera_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final Room room;
@@ -55,9 +56,14 @@ class _ChatScreenState extends State<ChatScreen> {
     debugPrint('Room: ${widget.room.name} (ID: ${widget.room.id})');
     _loadCurrentUserAndMessages();
     _subscribeToMessages();
+    _initializeCamera();
     
     // Add scroll listener to track user position
     _scrollController.addListener(_onScroll);
+  }
+
+  Future<void> _initializeCamera() async {
+    await CameraService.initializeCameras();
   }
 
   Future<void> _pickMediaWithPreview(String mediaType) async {
@@ -141,6 +147,124 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       },
     );
+  }
+
+  Future<void> _showMediaSourceDialog(String mediaType) async {
+    if (_currentUserId == null) return;
+    
+    debugPrint('=== CAMERA BUTTON PRESSED ===');
+    debugPrint('Media type: $mediaType');
+    debugPrint('Current user ID: $_currentUserId');
+
+    await CameraService.showSourceDialog(
+      context: context,
+      onMediaSelected: (filePath) async {
+        debugPrint('=== CAMERA DIALOG CALLBACK START ===');
+        debugPrint('=== MEDIA SELECTED ===');
+        debugPrint('File path: $filePath');
+        
+        if (!mounted) {
+          debugPrint('Widget not mounted, returning');
+          return;
+        }
+        
+        final file = XFile(filePath);
+        final captionController = TextEditingController();
+        
+        // Определяем тип медиа из расширения файла
+        final isVideo = filePath.toLowerCase().endsWith('.mp4') || 
+                        filePath.toLowerCase().endsWith('.mov') || 
+                        filePath.toLowerCase().endsWith('.avi');
+        
+        debugPrint('Detected media type: ${isVideo ? "video" : "photo"}');
+
+        debugPrint('About to show preview dialog...');
+        debugPrint('Widget mounted: $mounted');
+        
+        if (!mounted) {
+          debugPrint('Widget not mounted, skipping dialog');
+          return;
+        }
+        await Future.delayed(const Duration(milliseconds: 150));
+        final result = await showDialog(
+          context: Navigator.of(context, rootNavigator: true).context,
+          barrierDismissible: false,
+          builder: (dialogContext) {
+            debugPrint('Building preview dialog...');
+            return AlertDialog(
+              title: Text(isVideo
+                  ? 'Отправить видео'
+                  : 'Отправить фото'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (!isVideo)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(
+                          File(file.path),
+                          fit: BoxFit.contain,
+                        ),
+                      )
+                    else
+                      Container(
+                        height: 200,
+                        decoration: BoxDecoration(
+                          color: Colors.black12,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            Icons.play_circle_fill,
+                            size: 64,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: captionController,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        hintText: 'Добавить подпись (необязательно)',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    debugPrint('Cancel button pressed');
+                    Navigator.pop(dialogContext); // Закрываем предпросмотр
+                  },
+                  child: const Text('Отмена'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    debugPrint('Send button pressed');
+                    Navigator.pop(dialogContext); // Закрываем предпросмотр
+                    await _uploadPickedFile(
+                      file: file,
+                      mediaType: isVideo ? 'video' : 'photo',
+                      caption: captionController.text.trim(),
+                    );
+                  },
+                  child: const Text('Отправить'),
+                ),
+              ],
+            );
+          },
+        );
+        debugPrint('Preview dialog completed. Result: $result');
+      },
+      allowVideo: mediaType == 'video',
+      parentContext: context, // Передаем родительский контекст
+    );
+    
+    debugPrint('=== CAMERA DIALOG CLOSED ===');
   }
 
   Future<void> _loadCurrentUserAndMessages() async {
@@ -476,6 +600,11 @@ class _ChatScreenState extends State<ChatScreen> {
   required String mediaType,
   String? caption,
 }) async {
+  debugPrint('=== UPLOAD PICKED FILE START ===');
+  debugPrint('File: ${file.path}');
+  debugPrint('Type: $mediaType');
+  debugPrint('Caption: $caption');
+  
   setState(() => isUploading = true);
 
   try {
@@ -486,7 +615,14 @@ class _ChatScreenState extends State<ChatScreen> {
       bucketName: 'documents',
     );
 
-    if (url == null) return;
+    if (url == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ошибка загрузки файла')),
+        );
+      }
+      return;
+    }
 
     await Supabase.instance.client.from('messages').insert({
       'room_id': widget.room.id,
@@ -1071,13 +1207,13 @@ class _ChatScreenState extends State<ChatScreen> {
                       icon: const Icon(Icons.image),
                       onPressed: isUploading
                           ? null
-                          : () => _pickMediaWithPreview('photo'),
+                          : () => _showMediaSourceDialog('photo'),
                     ),
                     IconButton(
                       icon: const Icon(Icons.videocam),
                       onPressed: isUploading
                           ? null
-                          : () => _pickMediaWithPreview('video'),
+                          : () => _showMediaSourceDialog('video'),
                     ),
                     Expanded(
                       child: TextField(
