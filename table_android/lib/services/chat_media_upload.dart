@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class ChatMediaUpload {
   final ImagePicker _picker = ImagePicker();
 
-  /// Выбор фото / видео
+  /// 📸 Выбор фото / видео
   Future<XFile?> pickMedia({required String mediaType}) async {
     try {
       if (mediaType == 'photo') {
@@ -28,7 +28,7 @@ class ChatMediaUpload {
     }
   }
 
-  /// Загрузка в Supabase
+  /// ☁️ Загрузка в Supabase (уже выбранный файл)
   Future<String?> uploadMedia({
     required XFile file,
     required String roomId,
@@ -37,12 +37,16 @@ class ChatMediaUpload {
   }) async {
     try {
       final bytes = await file.readAsBytes();
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
+
+      final fileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
       final path = 'chat/$roomId/$userId/$fileName';
 
       final contentType =
           file.mimeType ??
-          (file.path.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg');
+          (file.path.endsWith('.mp4')
+              ? 'video/mp4'
+              : 'image/jpeg');
 
       await Supabase.instance.client.storage
           .from(bucketName)
@@ -58,13 +62,14 @@ class ChatMediaUpload {
       return Supabase.instance.client.storage
           .from(bucketName)
           .getPublicUrl(path);
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('❌ uploadMedia error: $e');
+      debugPrint('$st');
       return null;
     }
   }
 
-  /// Полный цикл
+  /// 🔁 Старый полный цикл (оставляем!)
   Future<String?> pickAndUpload({
     required String mediaType,
     required String roomId,

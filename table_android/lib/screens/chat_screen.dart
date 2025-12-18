@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
@@ -56,6 +57,89 @@ class _ChatScreenState extends State<ChatScreen> {
     
     // Add scroll listener to track user position
     _scrollController.addListener(_onScroll);
+  }
+
+  Future<void> _pickMediaWithPreview(String mediaType) async {
+    if (_currentUserId == null) return;
+
+    final XFile? file = mediaType == 'video'
+        ? await _imagePicker.pickVideo(source: ImageSource.gallery)
+        : await _imagePicker.pickImage(
+            source: ImageSource.gallery,
+            imageQuality: 85,
+            maxWidth: 1920,
+          );
+
+    if (file == null || !mounted) return;
+
+    final captionController = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(mediaType == 'video'
+              ? 'Отправить видео'
+              : 'Отправить фото'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (mediaType == 'photo')
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(
+                      File(file.path),
+                      fit: BoxFit.contain,
+                    ),
+                  )
+                else
+                  Container(
+                    height: 200,
+                    decoration: BoxDecoration(
+                      color: Colors.black12,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.play_circle_fill,
+                        size: 64,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: captionController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    hintText: 'Добавить подпись (необязательно)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Отмена'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await _uploadPickedFile(
+                  file: file,
+                  mediaType: mediaType,
+                  caption: captionController.text.trim(),
+                );
+              },
+              child: const Text('Отправить'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _loadCurrentUserAndMessages() async {
@@ -386,50 +470,43 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _pickAndUploadMedia(String mediaType) async {
-  if (_currentUserId == null) return;
-
-  debugPrint('📸 START pickAndUploadMedia ($mediaType)');
+  Future<void> _uploadPickedFile({
+  required XFile file,
+  required String mediaType,
+  String? caption,
+}) async {
   setState(() => isUploading = true);
 
   try {
-    debugPrint('📸 calling pickAndUpload...');
-    final url = await _mediaUpload.pickAndUpload(
-      mediaType: mediaType,
+    final url = await _mediaUpload.uploadMedia(
+      file: file,
       roomId: widget.room.id,
       userId: _currentUserId!,
       bucketName: 'documents',
     );
 
-    debugPrint('📸 upload result url = $url');
+    if (url == null) return;
 
-    if (url == null) {
-      debugPrint('❌ URL IS NULL');
-      return;
-    }
-
-    debugPrint('📸 inserting message...');
     await Supabase.instance.client.from('messages').insert({
       'room_id': widget.room.id,
       'user_id': _currentUserId,
       'user_name': _currentUserName,
       'media_type': mediaType,
       'media_url': url,
+      'text_content': caption?.isNotEmpty == true ? caption : null,
+      'file_name': file.name,
     });
-
-    debugPrint('✅ MESSAGE INSERTED');
-
-  } catch (e, st) {
-    debugPrint('❌ ERROR uploading media: $e');
-    debugPrint('$st');
+  } catch (e) {
+    debugPrint('❌ upload error: $e');
   } finally {
-    debugPrint('📸 FINALLY -> stop loading');
     if (mounted) {
       setState(() => isUploading = false);
     }
   }
 }
 
+
+  
 
 
   void _scrollToBottom() {
@@ -868,15 +945,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                               fontSize: 12,
                                             ),
                                           ),
-                                        if (message.textContent != null &&
-                                            message.textContent!.isNotEmpty)
-                                          Padding(
-                                            padding: !isMe
-                                                ? EdgeInsets.zero
-                                                : EdgeInsets.zero,
-                                            child: Text(message.textContent!),
-                                          ),
-                                        if (message.mediaType == 'photo')
+                                            if (message.mediaType == 'photo')
                                           GestureDetector(
                                             onTap: () => _showMediaPreview(
                                               message.mediaUrl!,
@@ -937,6 +1006,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                               ),
                                             ),
                                           ),
+                                        if (message.textContent != null &&
+                                            message.textContent!.isNotEmpty)
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 8),
+                                            child: Text(message.textContent!),
+                                          ),
                                         Padding(
                                           padding:
                                               const EdgeInsets.only(top: 4),
@@ -993,13 +1068,13 @@ class _ChatScreenState extends State<ChatScreen> {
                       icon: const Icon(Icons.image),
                       onPressed: isUploading
                           ? null
-                          : () => _pickAndUploadMedia('photo'),
+                          : () => _pickMediaWithPreview('photo'),
                     ),
                     IconButton(
                       icon: const Icon(Icons.videocam),
                       onPressed: isUploading
                           ? null
-                          : () => _pickAndUploadMedia('video'),
+                          : () => _pickMediaWithPreview('video'),
                     ),
                     Expanded(
                       child: TextField(

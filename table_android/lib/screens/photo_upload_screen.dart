@@ -106,7 +106,11 @@ class _PhotoUploadScreenState extends State<PhotoUploadScreen> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
-    final pickedFile = await picker.pickImage(source: source, imageQuality: 90);
+    final pickedFile = await picker.pickImage(
+      source: source, 
+      imageQuality: 80, // сжатие
+      maxWidth: 1920,   // ограничение ширины
+    );
     if (pickedFile != null) {
       setState(() {
         _image = File(pickedFile.path);
