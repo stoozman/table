@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:video_player/video_player.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
 import '../models/message.dart';
@@ -950,6 +951,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                             onTap: () => _showMediaPreview(
                                               message.mediaUrl!,
                                               message.fileName,
+                                              mediaType: 'photo',
                                             ),
                                             child: Container(
                                               margin:
@@ -973,6 +975,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                             onTap: () => _showMediaPreview(
                                               message.mediaUrl!,
                                               message.fileName,
+                                              mediaType: 'video',
                                             ),
                                             child: Container(
                                               margin:
@@ -1109,7 +1112,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _showMediaPreview(String url, String? fileName) {
+  void _showMediaPreview(String url, String? fileName, {String? mediaType}) {
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -1118,7 +1121,10 @@ class _ChatScreenState extends State<ChatScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Image.network(url, fit: BoxFit.contain),
+              if (mediaType == 'video')
+                _VideoPreview(url: url)
+              else
+                Image.network(url, fit: BoxFit.contain),
               if (fileName != null)
                 Padding(
                   padding: const EdgeInsets.all(8),
@@ -1127,6 +1133,132 @@ class _ChatScreenState extends State<ChatScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _VideoPreview extends StatefulWidget {
+  final String url;
+
+  const _VideoPreview({required this.url});
+
+  @override
+  State<_VideoPreview> createState() => _VideoPreviewState();
+}
+
+class _VideoPreviewState extends State<_VideoPreview> {
+  late VideoPlayerController _controller;
+  bool _isInitialized = false;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeVideo();
+  }
+
+  Future<void> _initializeVideo() async {
+    try {
+      _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+      await _controller.initialize();
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error initializing video: $e');
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hasError) {
+      return Container(
+        height: 300,
+        width: 300,
+        decoration: BoxDecoration(
+          color: Colors.black12,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Colors.red,
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Ошибка загрузки видео',
+              style: TextStyle(color: Colors.red),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (!_isInitialized) {
+      return Container(
+        height: 300,
+        width: 300,
+        decoration: BoxDecoration(
+          color: Colors.black12,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    return Container(
+      height: 300,
+      width: 300,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Expanded(
+            child: AspectRatio(
+              aspectRatio: _controller.value.aspectRatio,
+              child: VideoPlayer(_controller),
+            ),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    if (_controller.value.isPlaying) {
+                      _controller.pause();
+                    } else {
+                      _controller.play();
+                    }
+                  });
+                },
+                icon: Icon(
+                  _controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
