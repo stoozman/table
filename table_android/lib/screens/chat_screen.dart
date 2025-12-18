@@ -8,6 +8,7 @@ import '../models/room.dart';
 import '../services/local_storage.dart' as chat_storage;
 import '../services/chat_unread_service.dart';
 import '../services/realtime_manager.dart';
+import '../services/chat_media_upload.dart';
 
 class ChatScreen extends StatefulWidget {
   final Room room;
@@ -22,6 +23,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _imagePicker = ImagePicker();
+  final ChatMediaUpload _mediaUpload = ChatMediaUpload();
 
   List<Message> messages = [];
   bool isLoading = true;
@@ -385,70 +387,50 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _pickAndUploadMedia(String mediaType) async {
-    try {
-      XFile? file;
+  if (_currentUserId == null) return;
 
-      if (mediaType == 'photo') {
-        file = await _imagePicker.pickImage(source: ImageSource.gallery);
-      } else if (mediaType == 'video') {
-        file = await _imagePicker.pickVideo(source: ImageSource.gallery);
-      }
+  debugPrint('📸 START pickAndUploadMedia ($mediaType)');
+  setState(() => isUploading = true);
 
-      if (file == null) return;
+  try {
+    debugPrint('📸 calling pickAndUpload...');
+    final url = await _mediaUpload.pickAndUpload(
+      mediaType: mediaType,
+      roomId: widget.room.id,
+      userId: _currentUserId!,
+      bucketName: 'documents',
+    );
 
-      setState(() => isUploading = true);
+    debugPrint('📸 upload result url = $url');
 
-      // Загружаем файл в Supabase Storage
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
-      final storagePath = 'chat/${widget.room.id}/$_currentUserId/$fileName';
+    if (url == null) {
+      debugPrint('❌ URL IS NULL');
+      return;
+    }
 
-      final fileBytes = await file.readAsBytes();
+    debugPrint('📸 inserting message...');
+    await Supabase.instance.client.from('messages').insert({
+      'room_id': widget.room.id,
+      'user_id': _currentUserId,
+      'user_name': _currentUserName,
+      'media_type': mediaType,
+      'media_url': url,
+    });
 
-      await Supabase.instance.client.storage
-          .from('documents')
-          .uploadBinary(
-            storagePath,
-            fileBytes,
-            fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
-          );
+    debugPrint('✅ MESSAGE INSERTED');
 
-      // Получаем публичный URL
-      final publicUrl = Supabase.instance.client.storage
-          .from('documents')
-          .getPublicUrl(storagePath);
-
-      // Сохраняем сообщение с медиа в БД
-      final List<dynamic> resp = await Supabase.instance.client.from('messages').insert({
-        'room_id': widget.room.id,
-        'user_id': _currentUserId,
-        'user_name': _currentUserName,
-        'media_type': mediaType,
-        'media_url': publicUrl,
-        'file_name': file.name,
-      }).select();
-
-      if (resp.isNotEmpty) {
-        try {
-          final created = Message.fromJson(resp[0]);
-          setState(() {
-            messages.add(created);
-          });
-          _scrollToBottom();
-        } catch (e) {
-          debugPrint('Failed to parse created media message: $e');
-        }
-      }
-
+  } catch (e, st) {
+    debugPrint('❌ ERROR uploading media: $e');
+    debugPrint('$st');
+  } finally {
+    debugPrint('📸 FINALLY -> stop loading');
+    if (mounted) {
       setState(() => isUploading = false);
-    } catch (e) {
-      setState(() => isUploading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка загрузки медиа: $e')),
-        );
-      }
     }
   }
+}
+
+
 
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
