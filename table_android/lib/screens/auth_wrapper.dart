@@ -21,33 +21,28 @@ class _AuthWrapperState extends State<AuthWrapper> {
   }
 
   Future<void> _checkAuthStatus() async {
-    // Временно очищаем сессию для тестирования
-    await SessionService.logout();
-    
     final session = await SessionService.getCurrentSession();
     final isLoggedIn = session != null;
-    
-    print('[AUTH_WRAPPER] Session: $session');
-    print('[AUTH_WRAPPER] Is logged in: $isLoggedIn');
-    
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-        _isAuthenticated = isLoggedIn;
-      });
-    }
+
+    print('[AUTH_WRAPPER] Session exists: $isLoggedIn');
+
+    if (!mounted) return;
+    setState(() {
+      _isAuthenticated = isLoggedIn;
+      _isLoading = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
-    return _isAuthenticated ? const StartScreen() : const LoginScreen();
+    return _isAuthenticated
+        ? const StartScreen()
+        : const LoginScreen();
   }
 }

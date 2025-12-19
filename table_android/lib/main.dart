@@ -31,11 +31,19 @@ void main() async {
       ),
     );
     // Добавляем анонимную сессию для Realtime
-    try {
-      await Supabase.instance.client.auth.signInAnonymously();
-      print('[MAIN] Anonymous session created');
-    } catch (e) {
-      print('[MAIN] Error creating anonymous session: $e');
+    final auth = Supabase.instance.client.auth;
+    
+    final session = auth.currentSession;
+    
+    if (session == null) {
+      try {
+        await auth.signInAnonymously();
+        print('[MAIN] Anonymous session created');
+      } catch (e) {
+        print('[MAIN] Error creating anonymous session: $e');
+      }
+    } else {
+      print('[MAIN] Existing user session: ${session.user.id}');
     }
 
     try {
