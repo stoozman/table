@@ -199,24 +199,43 @@ class CameraService {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(
-                leading: const Icon(Icons.photo_library),
-                title: const Text('Галерея'),
-                onTap: () async {
-                  debugPrint('Gallery option selected');
-                  Navigator.pop(context);
-                  final picker = ImagePicker();
-                  final XFile? file = await picker.pickImage(
-                    source: ImageSource.gallery,
-                    imageQuality: 85,
-                    maxWidth: 1920,
-                  );
-                  if (file != null) {
-                    debugPrint('Image picked from gallery: ${file.path}');
-                    onMediaSelected(file.path);
-                  }
-                },
-              ),
+              if (!allowVideo)
+                ListTile(
+                  leading: const Icon(Icons.photo_library),
+                  title: const Text('Галерея'),
+                  onTap: () async {
+                    debugPrint('Gallery option selected');
+                    Navigator.pop(context);
+                    final picker = ImagePicker();
+                    final XFile? file = await picker.pickImage(
+                      source: ImageSource.gallery,
+                      imageQuality: 85,
+                      maxWidth: 1920,
+                    );
+                    if (file != null) {
+                      debugPrint('Image picked from gallery: ${file.path}');
+                      onMediaSelected(file.path);
+                    }
+                  },
+                ),
+              if (!allowVideo)
+                ListTile(
+                  leading: const Icon(Icons.camera_alt),
+                  title: const Text('Камера'),
+                  onTap: () async {
+                    debugPrint('Camera option selected');
+                    Navigator.pop(context);
+                    
+                    // Используем parentContext для камеры
+                    final cameraContext = parentContext ?? context;
+                    await _showCameraDialog(
+                      context: cameraContext,
+                      onMediaSelected: onMediaSelected,
+                      allowVideo: allowVideo,
+                      isVideoMode: false, // Фото режим
+                    );
+                  },
+                ),
               if (allowVideo)
                 ListTile(
                   leading: const Icon(Icons.video_library),
@@ -235,23 +254,6 @@ class CameraService {
                     }
                   },
                 ),
-              ListTile(
-                leading: const Icon(Icons.camera_alt),
-                title: const Text('Камера'),
-                onTap: () async {
-                  debugPrint('Camera option selected');
-                  Navigator.pop(context);
-                  
-                  // Используем parentContext для камеры
-                  final cameraContext = parentContext ?? context;
-                  await _showCameraDialog(
-                    context: cameraContext,
-                    onMediaSelected: onMediaSelected,
-                    allowVideo: allowVideo,
-                    isVideoMode: false, // Фото режим
-                  );
-                },
-              ),
               if (allowVideo)
                 ListTile(
                   leading: const Icon(Icons.videocam),
