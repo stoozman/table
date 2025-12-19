@@ -10,8 +10,8 @@ import 'screens/qr_scan_screen.dart';
 import 'screens/raw_material_details_screen.dart';
 import 'screens/photo_upload_screen.dart';
 import 'screens/live_color_check_screen.dart';
+import 'screens/auth_wrapper.dart';
 import 'screens/chat_list_screen.dart';
-import 'screens/profile_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'services/chat_unread_service.dart';
 import 'services/main_unread_tracker.dart';
@@ -74,7 +74,7 @@ class MyApp extends StatelessWidget {
         Locale('ru'),
         Locale('en'),
       ],
-      home: const StartScreen(),
+      home: const AuthWrapper(),
     );
   }
 }
@@ -285,16 +285,6 @@ class _StartScreenState extends State<StartScreen> {
                 },
                 label: 'Чат',
                 badge: _buildUnreadBadge(),
-              ),
-              const SizedBox(height: 20),
-              _buildMenuButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const ProfileScreen()),
-                  );
-                },
-                label: 'Профиль',
               ),
             ],
           ),

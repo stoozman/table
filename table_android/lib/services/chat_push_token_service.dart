@@ -5,7 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 
-import '../services/local_storage.dart' as chat_storage;
+import '../services/session_service.dart';
 
 class ChatPushTokenService {
   static Future<void> initAndRegister() async {
@@ -25,7 +25,7 @@ class ChatPushTokenService {
       return;
     }
 
-    final userId = await chat_storage.ChatUserStorage.getUserId();
+    final userId = await SessionService.getCurrentUserId();
 
     final deviceType = kIsWeb
         ? 'web'

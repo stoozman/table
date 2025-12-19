@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'chat_unread_service.dart';
-import 'local_storage.dart' as chat_storage;
+import '../services/session_service.dart';
 
 class MainUnreadTracker {
   static final MainUnreadTracker _instance = MainUnreadTracker._internal();
@@ -22,7 +22,7 @@ class MainUnreadTracker {
 
   Future<void> initialize() async {
     try {
-      _currentUserId = await chat_storage.ChatUserStorage.getUserId();
+      _currentUserId = await SessionService.getCurrentUserId();
       if (_currentUserId == null) return;
 
       await _loadTotalUnread();

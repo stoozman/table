@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 import 'dart:async';
 import '../models/message.dart';
 import '../models/room.dart';
-import '../services/local_storage.dart' as chat_storage;
+import '../services/session_service.dart';
 import '../services/chat_unread_service.dart';
 import '../services/realtime_manager.dart';
 import '../services/chat_media_upload.dart';
@@ -270,8 +270,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _loadCurrentUserAndMessages() async {
     try {
-      _currentUserId = await chat_storage.ChatUserStorage.getUserId();
-      _currentUserName = await chat_storage.ChatUserStorage.getUserName();
+      final session = await SessionService.getCurrentSession();
+      _currentUserId = session?['user_id'];
+      _currentUserName = session?['user_name'];
       await _loadMessages();
     } catch (e) {
       setState(() {

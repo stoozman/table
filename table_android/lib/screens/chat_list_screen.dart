@@ -4,10 +4,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
 import '../models/room.dart';
-import '../services/local_storage.dart' as chat_storage;
+import '../services/session_service.dart';
 import '../services/chat_unread_service.dart';
+import '../main.dart';
 import 'chat_screen.dart';
 import 'new_chat_screen.dart';
+import 'auth_wrapper.dart';
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
@@ -139,7 +141,7 @@ class _ChatListScreenState extends State<ChatListScreen>
   Future<void> _loadUserAndRooms() async {
     if (!mounted) return;
     try {
-      _currentUserId = await chat_storage.ChatUserStorage.getUserId();
+      _currentUserId = await SessionService.getCurrentUserId();
       await _loadRooms();
     } catch (e) {
       if (!mounted) return;
@@ -420,6 +422,20 @@ class _ChatListScreenState extends State<ChatListScreen>
       appBar: AppBar(
         title: const Text('Чаты'),
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await SessionService.logout();
+              if (mounted) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const AuthWrapper()),
+                  (route) => false,
+                );
+              }
+            },
+          ),
+        ],
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())

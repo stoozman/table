@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../services/local_storage.dart' as chat_storage;
+import '../services/session_service.dart';
 
 class NewChatScreen extends StatefulWidget {
   const NewChatScreen({super.key});
@@ -27,8 +27,9 @@ class _NewChatScreenState extends State<NewChatScreen> {
 
   Future<void> _loadCurrentUserAndUsers() async {
     try {
-      _currentUserId = await chat_storage.ChatUserStorage.getUserId();
-      _currentUserName = await chat_storage.ChatUserStorage.getUserName();
+      final session = await SessionService.getCurrentSession();
+      _currentUserId = session?['user_id'];
+      _currentUserName = session?['user_name'];
 
       // Сначала убедимся, что текущий пользователь есть в chat_users
       // и что актуальное имя синхронизировано (без дублей)
