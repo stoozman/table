@@ -12,6 +12,7 @@ import '../services/chat_unread_service.dart';
 import '../services/realtime_manager.dart';
 import '../services/chat_media_upload.dart';
 import '../services/camera_service.dart';
+import '../services/chat_delete_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final Room room;
@@ -736,110 +737,75 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _deleteRoom() async {
-    // Проверяем, что текущий пользователь - создатель чата
-    if (_currentUserId != widget.room.createdBy) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Только создатель может удалить чат')),
-        );
-      }
-      return;
-    }
-
-    // Подтверждение удаления
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Удалить чат?'),
-        content: const Text(
-          'Это действие нельзя отменить. Все сообщения будут удалены.',
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Удалить чат?'),
+      content: const Text('Все сообщения и файлы будут удалены'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Отмена'),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: TextButton.styleFrom(foregroundColor: Colors.red),
+          child: const Text('Удалить'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirm != true) return;
+
+  try {
+    await ChatDeleteService.deleteRoom(
+      roomId: widget.room.id,
+      currentUserId: _currentUserId!,
+      roomCreatorId: widget.room.createdBy,
     );
 
-    if (confirm != true) return;
-
-    try {
-      // 1. Удаляем все сообщения в этом чате
-      await Supabase.instance.client
-          .from('messages')
-          .delete()
-          .eq('room_id', widget.room.id);
-
-      // 2. Удаляем всех участников чата
-      await Supabase.instance.client
-          .from('room_members')
-          .delete()
-          .eq('room_id', widget.room.id);
-
-      // 3. Удаляем сам чат
-      await Supabase.instance.client
-          .from('rooms')
-          .delete()
-          .eq('id', widget.room.id);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Чат удалён')),
-        );
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка удаления чата: $e')),
-        );
-      }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Чат удалён')),
+      );
+      Navigator.pop(context);
+    }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка удаления чата: $e')),
+      );
     }
   }
+}
+
 
   Future<void> _deleteMessage(Message message) async {
-    // Проверяем, что это наше сообщение
-    if (message.userId != _currentUserId) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Можно удалять только свои сообщения')),
-        );
-      }
-      return;
+  try {
+    await ChatDeleteService.deleteMessage(
+      message: message,
+      currentUserId: _currentUserId!,
+    );
+
+    setState(() {
+      messages.removeWhere((m) => m.id == message.id);
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Сообщение удалено')),
+      );
     }
-
-    try {
-      // Помечаем сообщение как удаленное в БД (для синхронизации между устройствами)
-      await Supabase.instance.client
-          .from('messages')
-          .update({'deleted': true})
-          .eq('id', message.id);
-
-      // Удаляем из локального списка
-      setState(() {
-        messages.removeWhere((m) => m.id == message.id);
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Сообщение удалено')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка удаления: $e')),
-        );
-      }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка удаления: $e')),
+      );
     }
   }
+}
+
 
   Future<void> _editMessage(Message message) async {
     // Проверяем, что это наше сообщение
