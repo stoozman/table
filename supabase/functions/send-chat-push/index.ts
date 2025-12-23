@@ -14,6 +14,8 @@ type TriggerPayload = {
   table?: string;
   record: MessageRecord;
   old_record?: Record<string, unknown> | null;
+  entity_type?: string;
+  entity_id?: string;
 };
 
 type RoomMemberRow = {
@@ -113,6 +115,91 @@ serve(async (req: Request) => {
     const payload = (await req.json()) as TriggerPayload;
     const record = payload?.record;
 
+    // === НОВЫЙ БЛОК: Обработка entity_type и entity_id ===
+    if (payload.entity_type && payload.entity_id) {
+      console.log("[send-chat-push] entity detected", {
+        entity_type: payload.entity_type,
+        entity_id: payload.entity_id,
+      });
+
+      // Проверяем, существует ли комната для этой сущности
+      const { data: existingRoom, error: roomCheckErr } = await supabase
+        .from("rooms")
+        .select("id")
+        .eq("entity_type", payload.entity_type)
+        .eq("entity_id", payload.entity_id)
+        .maybeSingle();
+
+      if (roomCheckErr) throw roomCheckErr;
+
+      if (!existingRoom) {
+        console.log("[send-chat-push] creating new room for entity");
+
+        // Создаём новую комнату
+        const { data: newRoom, error: createRoomErr } = await supabase
+          .from("rooms")
+          .insert({
+            entity_type: payload.entity_type,
+            entity_id: payload.entity_id,
+            name: `${payload.entity_type}: ${payload.entity_id}`,
+            created_by: 'system',
+          })
+          .select("id")
+          .single();
+
+        if (createRoomErr) throw createRoomErr;
+
+        const newRoomId = newRoom.id;
+        console.log("[send-chat-push] room created", { id: newRoomId });
+
+        // Добавляем всех пользователей в комнату
+        const { data: users } = await supabase.from("users").select("id");
+
+        const members = (users ?? []).map(u => ({
+          room_id: newRoomId,
+          user_id: u.id,
+        }));
+
+
+        await supabase.from("room_members").insert(members);
+        console.log("[send-chat-push] members added", { count: members.length });
+
+        // Создаём системное сообщение
+        const systemMessage = `Комната создана для ${payload.entity_type} с ID ${payload.entity_id}`;
+        
+        const { error: systemMsgErr } = await supabase
+          .from("messages") 
+          .insert({
+            room_id: newRoomId,
+            user_id: "system",
+            text_content: systemMessage,
+            is_system: true,
+          });
+
+        if (systemMsgErr) throw systemMsgErr;
+
+        console.log("[send-chat-push] system message created");
+
+        return jsonResponse({
+          ok: true,
+          room_created: true,
+          room_id: newRoomId,
+          system_message: systemMessage,
+        });
+      } else {
+        console.log("[send-chat-push] room already exists", {
+          id: existingRoom.id,
+        });
+
+        return jsonResponse({
+          ok: true,
+          room_exists: true,
+          room_id: existingRoom.id,
+        });
+      }
+    }
+    // === КОНЕЦ НОВОГО БЛОКА ===
+
     if (!record?.room_id || !record?.user_id) {
       console.log("[send-chat-push] invalid payload", payload);
       return jsonResponse(
@@ -207,7 +294,7 @@ serve(async (req: Request) => {
   } catch (e) {
     console.log("[send-chat-push] error", e instanceof Error ? e.message : String(e));
     return jsonResponse(
-      { ok: false, error: e instanceof Error ? e.message : String(e) },
+      { ok: false, error: JSON.stringify(e, Object.getOwnPropertyNames(e)) },
       { status: 500 },
     );
   }

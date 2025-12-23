@@ -616,6 +616,149 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
   const TableRow = React.memo(function TableRow({ item, getRowStyle, supabase, table, onEdit, handleViewDocument, handleActClick, handleActDelete, handleLabelClick, handleDocumentDelete, handleDocumentUpload, handleEditLocal, handleDelete }) {
     const rowStyle = getRowStyle(item.status);
     const hasStatusColor = rowStyle && rowStyle.backgroundColor;
+    const [pendingStatus, setPendingStatus] = useState(item.status || '');
+    const [showConfirmButton, setShowConfirmButton] = useState(false);
+
+    const handleStatusChange = (e) => {
+      const newStatus = e.target.value;
+      setPendingStatus(newStatus);
+      setShowConfirmButton(newStatus !== (item.status || ''));
+    };
+
+    const handleStatusConfirm = async () => {
+  try {
+    const oldStatus = item.status || '';
+
+    // 1. Обновляем статус в базе данных
+    const { data: updatedData, error } = await supabase
+      .from(table)
+      .update({ status: pendingStatus })
+      .eq('id', item.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Ошибка обновления статуса:", error);
+      alert("Ошибка обновления статуса: " + error.message);
+      setPendingStatus(item.status || '');
+      setShowConfirmButton(false);
+      return;
+    }
+
+    console.log("Статус успешно обновлен");
+    onEdit({ ...item, status: pendingStatus });
+    setShowConfirmButton(false);
+
+    // 2. Создаём/находим комнату для этой записи
+    const entityType = table === 'raw_materials' ? 'raw_material_status' :
+                       table === 'finished_products' ? 'finished_product_status' :
+                       'sample_status';
+
+    // Проверяем, существует ли комната
+    const { data: existingRoom } = await supabase
+      .from('rooms')
+      .select('id')
+      .eq('entity_type', entityType)
+      .eq('entity_id', item.id)
+      .maybeSingle();
+
+    let roomId = existingRoom?.id;
+
+    // Если комнаты нет - создаём
+    if (!roomId) {
+      const roomName = `${item.name} (${item.batch_number})`;
+
+      const { data: newRoom, error: roomError } = await supabase
+        .from('rooms')
+        .insert({
+          entity_type: entityType,
+          entity_id: item.id,
+          name: roomName,
+          created_by: 'system'
+        })
+        .select('id')
+        .single();
+
+      if (roomError) {
+        console.error("Ошибка создания комнаты:", roomError);
+        return;
+      }
+
+      roomId = newRoom.id;
+
+      // Добавляем всех зарегистрированных пользователей
+      const { data: users, error: usersError } = await supabase
+        .from('chat_users')
+        .select('user_id, user_name')
+        .eq('is_approved', true); // Только одобренные пользователи
+
+      if (usersError) {
+        console.error("Ошибка получения пользователей:", usersError);
+      } else if (users && users.length > 0) {
+        // Проверяем, какие пользователи уже есть в комнате
+        const { data: existingMembers } = await supabase
+          .from('room_members')
+          .select('user_id')
+          .eq('room_id', roomId);
+
+        const existingUserIds = new Set(existingMembers?.map(m => m.user_id) || []);
+
+        // Добавляем всех пользователей, которых ещё нет
+        const newMembers = users
+          .filter(u => !existingUserIds.has(u.user_id))
+          .map(u => ({
+            room_id: roomId,
+            user_id: u.user_id,
+            user_name: u.user_name || 'Пользователь'
+          }));
+
+        if (newMembers.length > 0) {
+          const { error: membersError } = await supabase
+            .from('room_members')
+            .insert(newMembers);
+
+          if (membersError) {
+            console.error("Ошибка добавления участников:", membersError);
+          } else {
+            console.log(`Добавлено участников: ${newMembers.length}`);
+          }
+        }
+      }
+    }
+
+    // 3. Отправляем сообщение о смене статуса
+    const messageText = `📋 Статус изменён с "${oldStatus || 'не установлен'}" на "${pendingStatus}"\n\n` +
+                       `📦 Наименование: ${item.name}\n` +
+                       `🏷️ Партия: ${item.batch_number}\n` +
+                       `📊 Таблица: ${table === 'raw_materials' ? 'Сырьё' : table === 'finished_products' ? 'Готовая продукция' : 'Образцы'}`;
+
+    const { error: messageError } = await supabase
+      .from('messages')
+      .insert({
+        room_id: roomId,
+        user_id: 'system',
+        user_name: 'Система',
+        text_content: messageText
+      });
+
+    if (messageError) {
+      console.error("Ошибка отправки сообщения:", messageError);
+    } else {
+      console.log("Уведомление отправлено в комнату:", roomId);
+    }
+
+  } catch (error) {
+    console.error("Ошибка при обновлении статуса:", error);
+    setPendingStatus(item.status || '');
+    setShowConfirmButton(false);
+  }
+};
+
+
+    const handleStatusCancel = () => {
+      setPendingStatus(item.status || '');
+      setShowConfirmButton(false);
+    };
   // Перенос локального состояния имени документа в DocumentsCell
     return (
       <tr
@@ -659,31 +802,35 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
         </td>
         {/* Столбец "Статус" */}
         <td>
-          <select
-            value={item.status || ''}
-            onChange={async (e) => {
-              const newStatus = e.target.value;
-              const { data: updatedData, error } = await supabase
-                .from(table)
-                .update({ status: newStatus })
-                .eq('id', item.id)
-                .select();
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <select value={pendingStatus} onChange={handleStatusChange}>
+      <option value="">--Выберите статус--</option>
+      <option value="Годное">Годное</option>
+      <option value="На карантине">На карантине</option>
+      <option value="На исследовании">На исследовании</option>
+      <option value="Брак">Брак</option>
+    </select>
 
-              if (error) {
-                console.error("Ошибка обновления статуса:", error);
-                alert("Ошибка обновления статуса");
-              } else if (updatedData && updatedData.length > 0) {
-                onEdit(updatedData[0]);
-              }
-            }}
-          >
-            <option value="">--Выберите статус--</option>
-            <option value="Годное">Годное</option>
-            <option value="На карантине">На карантине</option>
-            <option value="На исследовании">На исследовании</option>
-            <option value="Брак">Брак</option>
-          </select>
-        </td>
+    {showConfirmButton && (
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          onClick={handleStatusConfirm}
+          style={{ background: '#28a745', color: '#fff' }}
+        >
+          ✔ Подтвердить
+        </button>
+
+        <button
+          onClick={handleStatusCancel}
+          style={{ background: '#dc3545', color: '#fff' }}
+        >
+          ✖ Отмена
+        </button>
+      </div>
+    )}
+  </div>
+</td>
+
         {/* Столбец "Документы" */}
         <td>
           <DocumentsCell

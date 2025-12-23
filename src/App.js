@@ -91,31 +91,78 @@ function AppContent() {
     };
 
     const editData = async (updatedData) => {
-        const { data: updatedRecord, error } = await supabase
-            .from(table)
-            .update(updatedData)
-            .eq('id', updatedData.id)
-            .select();
+        try {
+            // First check if the record exists
+            const { data: existingRecord, error: checkError } = await supabase
+                .from(table)
+                .select('id')
+                .eq('id', updatedData.id)
+                .single();
+
+            if (checkError || !existingRecord) {
+                console.error('Record not found:', updatedData.id);
+                console.log('Refreshing data to remove stale records...');
+                fetchData(); // Refresh data to remove stale records
+                return;
+            }
+
+            const { data: updatedRecord, error } = await supabase
+                .from(table)
+                .update(updatedData)
+                .eq('id', updatedData.id)
+                .select();
     
-        if (error) {
-            console.error('Error updating data:', error);
-        } else if (updatedRecord && updatedRecord.length > 0) {
-            setData(prevData =>
-                prevData.map(item => item.id === updatedData.id ? updatedRecord[0] : item)
-            );
+            if (error) {
+                console.error('Error updating data:', error);
+                if (error.code === 'PGRST116') {
+                    console.log('Record not found during update, refreshing data...');
+                    fetchData(); // Refresh data to remove stale records
+                }
+            } else if (updatedRecord && updatedRecord.length > 0) {
+                setData(prevData =>
+                    prevData.map(item => item.id === updatedData.id ? updatedRecord[0] : item)
+                );
+            }
+        } catch (error) {
+            console.error('Unexpected error in editData:', error);
+            fetchData(); // Refresh data on unexpected errors
         }
     };
 
     const deleteData = async (id) => {
-        const { data, error } = await supabase
-            .from(table)
-            .delete()
-            .eq('id', id);
+        try {
+            // First check if the record exists
+            const { data: existingRecord, error: checkError } = await supabase
+                .from(table)
+                .select('id')
+                .eq('id', id)
+                .single();
 
-        if (error) console.error('Error deleting data:', error);
-        else {
-            console.log('Successfully deleted data');
-            fetchData();
+            if (checkError || !existingRecord) {
+                console.error('Record not found for deletion:', id);
+                console.log('Refreshing data to remove stale records...');
+                fetchData(); // Refresh data to remove stale records
+                return;
+            }
+
+            const { data, error } = await supabase
+                .from(table)
+                .delete()
+                .eq('id', id);
+
+            if (error) {
+                console.error('Error deleting data:', error);
+                if (error.code === 'PGRST116') {
+                    console.log('Record not found during deletion, refreshing data...');
+                    fetchData(); // Refresh data to remove stale records
+                }
+            } else {
+                console.log('Successfully deleted data');
+                fetchData();
+            }
+        } catch (error) {
+            console.error('Unexpected error in deleteData:', error);
+            fetchData(); // Refresh data on unexpected errors
         }
     };
 
