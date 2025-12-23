@@ -755,6 +755,8 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
 };
 
 
+
+
     const handleStatusCancel = () => {
       setPendingStatus(item.status || '');
       setShowConfirmButton(false);

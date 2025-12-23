@@ -35,8 +35,16 @@ class ChatDeleteService {
     required String roomId,
     required String currentUserId,
     required String roomCreatorId,
+    required String currentUserName,
   }) async {
-    if (currentUserId != roomCreatorId) {
+    // Проверка прав
+    if (roomCreatorId == 'system') {
+      // Системный чат — только Станислав
+      if (currentUserName != 'Станислав') {
+        throw Exception('Только Станислав может удалить системный чат');
+      }
+    } else if (currentUserId != roomCreatorId) {
+      // Обычный чат — только создатель
       throw Exception('Только создатель может удалить чат');
     }
 
@@ -58,36 +66,24 @@ class ChatDeleteService {
       }
     }
 
-    // 2️⃣ Удаляем файлы пачками (по bucket)
+    // 2️⃣ Удаляем файлы по bucket
     final filesByBucket = <String, List<String>>{};
-
     for (final f in files) {
       filesByBucket.putIfAbsent(f.bucket, () => []).add(f.path);
     }
 
     for (final entry in filesByBucket.entries) {
-      await _supabase.storage
-          .from(entry.key)
-          .remove(entry.value);
+      await _supabase.storage.from(entry.key).remove(entry.value);
     }
 
     // 3️⃣ Удаляем сообщения
-    await _supabase
-        .from('messages')
-        .delete()
-        .eq('room_id', roomId);
+    await _supabase.from('messages').delete().eq('room_id', roomId);
 
     // 4️⃣ Удаляем участников
-    await _supabase
-        .from('room_members')
-        .delete()
-        .eq('room_id', roomId);
+    await _supabase.from('room_members').delete().eq('room_id', roomId);
 
     // 5️⃣ Удаляем чат
-    await _supabase
-        .from('rooms')
-        .delete()
-        .eq('id', roomId);
+    await _supabase.from('rooms').delete().eq('id', roomId);
   }
 
   /// 🔍 Парсинг bucket + path из public URL
@@ -111,7 +107,6 @@ class ChatDeleteService {
   }
 }
 
-/// Внутренняя модель
 class _StorageFile {
   final String bucket;
   final String path;

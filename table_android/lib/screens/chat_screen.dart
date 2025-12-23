@@ -738,6 +738,16 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _deleteRoom() async {
+  if (widget.room.createdBy == 'system' && _currentUserName != 'Станислав') {
+    // Только Станислав может удалять системные чаты
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Удалять системные чаты может только Станислав')),
+      );
+    }
+    return;
+  }
+
   final confirm = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
@@ -764,6 +774,7 @@ class _ChatScreenState extends State<ChatScreen> {
       roomId: widget.room.id,
       currentUserId: _currentUserId!,
       roomCreatorId: widget.room.createdBy,
+      currentUserName: _currentUserName!, // <- добавляем сюда имя с ! для проверки на null
     );
 
     if (mounted) {
@@ -780,6 +791,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 }
+
 
 
   Future<void> _deleteMessage(Message message) async {
@@ -960,7 +972,8 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         actions: [
-          if (_currentUserId == widget.room.createdBy)
+          if (widget.room.createdBy == _currentUserId || (widget.room.createdBy == 'system' && _currentUserName == 'Станислав'))
+
             IconButton(
               icon: const Icon(Icons.delete),
               onPressed: _deleteRoom,
