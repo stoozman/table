@@ -81,6 +81,22 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     }
   };
 
+  // Преобразование статуса в цвет в формате #RRGGBB (используется для цвета комнаты)
+  const statusToHexColor = (status) => {
+    switch (status) {
+      case 'Годное':
+        return '#28a745'; // green
+      case 'На карантине':
+        return '#ffc107'; // yellow
+      case 'На исследовании':
+        return '#0d6efd'; // blue
+      case 'Брак':
+        return '#dc3545'; // red
+      default:
+        return null;
+    }
+  };
+
   const formatScalar = (v) => {
     // Handle null/undefined
     if (v == null) return '';
@@ -668,13 +684,17 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
     if (!roomId) {
       const roomName = `${item.name} (${item.batch_number})`;
 
+      // map status->hex color
+      const colorHex = statusToHexColor(pendingStatus);
+
       const { data: newRoom, error: roomError } = await supabase
         .from('rooms')
         .insert({
           entity_type: entityType,
           entity_id: item.id,
           name: roomName,
-          created_by: 'system'
+          created_by: 'system',
+          color: colorHex,
         })
         .select('id')
         .single();
@@ -723,6 +743,18 @@ function DataTable({ data, table, onAdd, onEdit, onDelete, supabase }) {
             console.log(`Добавлено участников: ${newMembers.length}`);
           }
         }
+      }
+    }
+
+    // Обновим цвет комнаты если она уже существовала (чтобы синхронизировать цвет при смене статуса)
+    const newColorHex = statusToHexColor(pendingStatus);
+    if (roomId && newColorHex) {
+      const { error: colorErr } = await supabase
+        .from('rooms')
+        .update({ color: newColorHex })
+        .eq('id', roomId);
+      if (colorErr) {
+        console.error('Ошибка обновления цвета комнаты:', colorErr);
       }
     }
 

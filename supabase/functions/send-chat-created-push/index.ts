@@ -136,12 +136,49 @@ serve(async (req: Request) => {
         console.log("[send-chat-push] creating new room for entity");
 
         // Создаём новую комнату
+        // Determine color based on entity status (best-effort)
+        let colorHex: string | null = null;
+        try {
+          const map = {
+            'raw_material_status': 'raw_materials',
+            'finished_product_status': 'finished_products',
+            'sample_status': 'samples',
+          } as Record<string, string>;
+          const tableName = map[payload.entity_type ?? ''];
+          if (tableName) {
+            const { data: entityRow, error: entityErr } = await supabase
+              .from(tableName)
+              .select('status')
+              .eq('id', payload.entity_id)
+              .maybeSingle();
+            if (!entityErr && entityRow && entityRow.status) {
+              switch (entityRow.status) {
+                case 'Годное':
+                  colorHex = '#28a745';
+                  break;
+                case 'На карантине':
+                  colorHex = '#ffc107';
+                  break;
+                case 'На исследовании':
+                  colorHex = '#0d6efd';
+                  break;
+                case 'Брак':
+                  colorHex = '#dc3545';
+                  break;
+              }
+            }
+          }
+        } catch (e) {
+          console.log('[send-chat-push] color detection error', e);
+        }
+
         const { data: newRoom, error: createRoomErr } = await supabase
           .from("rooms")
           .insert({
             entity_type: payload.entity_type,
             entity_id: payload.entity_id,
             room_name: `${payload.entity_type}: ${payload.entity_id}`,
+            color: colorHex,
           })
           .select("room_id")
           .single();

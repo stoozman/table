@@ -125,7 +125,7 @@ serve(async (req: Request) => {
       // Проверяем, существует ли комната для этой сущности
       const { data: existingRoom, error: roomCheckErr } = await supabase
         .from("rooms")
-        .select("id")
+        .select("id, color")
         .eq("entity_type", payload.entity_type)
         .eq("entity_id", payload.entity_id)
         .maybeSingle();
@@ -135,6 +135,42 @@ serve(async (req: Request) => {
       if (!existingRoom) {
         console.log("[send-chat-push] creating new room for entity");
 
+        // Determine color based on entity status (best-effort)
+        let colorHex: string | null = null;
+        try {
+          const map = {
+            'raw_material_status': 'raw_materials',
+            'finished_product_status': 'finished_products',
+            'sample_status': 'samples',
+          } as Record<string, string>;
+          const tableName = map[payload.entity_type ?? ''];
+          if (tableName) {
+            const { data: entityRow, error: entityErr } = await supabase
+              .from(tableName)
+              .select('status')
+              .eq('id', payload.entity_id)
+              .maybeSingle();
+            if (!entityErr && entityRow && entityRow.status) {
+              switch (entityRow.status) {
+                case 'Годное':
+                  colorHex = '#28a745';
+                  break;
+                case 'На карантине':
+                  colorHex = '#ffc107';
+                  break;
+                case 'На исследовании':
+                  colorHex = '#0d6efd';
+                  break;
+                case 'Брак':
+                  colorHex = '#dc3545';
+                  break;
+              }
+            }
+          }
+        } catch (e) {
+          console.log('[send-chat-push] color detection error', e);
+        }
+
         // Создаём новую комнату
         const { data: newRoom, error: createRoomErr } = await supabase
           .from("rooms")
@@ -143,6 +179,7 @@ serve(async (req: Request) => {
             entity_id: payload.entity_id,
             name: `${payload.entity_type}: ${payload.entity_id}`,
             created_by: 'system',
+            color: colorHex,
           })
           .select("id")
           .single();
@@ -190,6 +227,51 @@ serve(async (req: Request) => {
         console.log("[send-chat-push] room already exists", {
           id: existingRoom.id,
         });
+
+        // Try to refresh color based on current entity status (if not set or outdated)
+        try {
+          let colorHex: string | null = null;
+          const map = {
+            'raw_material_status': 'raw_materials',
+            'finished_product_status': 'finished_products',
+            'sample_status': 'samples',
+          } as Record<string, string>;
+          const tableName = map[payload.entity_type ?? ''];
+          if (tableName) {
+            const { data: entityRow, error: entityErr } = await supabase
+              .from(tableName)
+              .select('status')
+              .eq('id', payload.entity_id)
+              .maybeSingle();
+            if (!entityErr && entityRow && entityRow.status) {
+              switch (entityRow.status) {
+                case 'Годное':
+                  colorHex = '#28a745';
+                  break;
+                case 'На карантине':
+                  colorHex = '#ffc107';
+                  break;
+                case 'На исследовании':
+                  colorHex = '#0d6efd';
+                  break;
+                case 'Брак':
+                  colorHex = '#dc3545';
+                  break;
+              }
+            }
+          }
+
+          if (colorHex && colorHex !== (existingRoom.color as string | null)) {
+            const { error: updateErr } = await supabase
+              .from('rooms')
+              .update({ color: colorHex })
+              .eq('id', existingRoom.id);
+            if (updateErr) console.log('[send-chat-push] failed to update room color', updateErr);
+            else console.log('[send-chat-push] room color updated', { room_id: existingRoom.id, color: colorHex });
+          }
+        } catch (e) {
+          console.log('[send-chat-push] color refresh error', e);
+        }
 
         return jsonResponse({
           ok: true,

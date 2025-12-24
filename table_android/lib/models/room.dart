@@ -8,6 +8,7 @@ class Room {
   final String? lastMessageText;
   final DateTime? lastMessageTime;
   final int unreadCount;
+  final String? color;
 
   Room({
     required this.id,
@@ -19,6 +20,7 @@ class Room {
     this.lastMessageText,
     this.lastMessageTime,
     this.unreadCount = 0,
+    this.color,
   });
 
   factory Room.fromJson(Map<String, dynamic> json) {
@@ -36,12 +38,14 @@ class Room {
           ? DateTime.parse(json['last_message_time'] as String)
           : null,
       unreadCount: json['unread_count'] as int? ?? 0,
+      color: json['color'] as String?,
     );
   }
 
   Map<String, dynamic> toJson() => {
     'name': name,
     'created_by': createdBy,
+    if (color != null) 'color': color,
   };
 
   Room copyWith({
@@ -54,6 +58,7 @@ class Room {
     String? lastMessageText,
     DateTime? lastMessageTime,
     int? unreadCount,
+    String? color,
   }) {
     return Room(
       id: id ?? this.id,
@@ -65,6 +70,7 @@ class Room {
       lastMessageText: lastMessageText ?? this.lastMessageText,
       lastMessageTime: lastMessageTime ?? this.lastMessageTime,
       unreadCount: unreadCount ?? this.unreadCount,
+      color: color ?? this.color,
     );
   }
 }

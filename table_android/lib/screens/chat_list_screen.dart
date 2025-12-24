@@ -26,6 +26,7 @@ class _ChatListScreenState extends State<ChatListScreen>
   String? _currentUserId;
   final dateFormat = DateFormat('dd.MM.yyyy HH:mm');
   RealtimeChannel? _realtimeSubscription;
+  RealtimeChannel? _roomsSubscription;
   Set<String> _currentRoomIds = {};
 
   static const Duration _supabaseTimeout = Duration(seconds: 30);
@@ -187,7 +188,7 @@ class _ChatListScreenState extends State<ChatListScreen>
 
       final roomsResponse = await Supabase.instance.client
           .from('rooms')
-          .select('id, name, created_by, created_at, updated_at')
+          .select('id, name, created_by, created_at, updated_at, color')
           .inFilter('id', roomIds)
           .timeout(_supabaseTimeout);
 
@@ -213,6 +214,7 @@ class _ChatListScreenState extends State<ChatListScreen>
 
       if (resubscribe && mounted) {
         _subscribeToMessages();
+        _subscribeToRooms();
       }
     } catch (e) {
       if (e is TimeoutException) {
@@ -293,6 +295,57 @@ class _ChatListScreenState extends State<ChatListScreen>
       print('[CHATLIST] Error: $e');
       Future.delayed(const Duration(seconds: 5), () {
         if (mounted) _subscribeToMessages();
+      });
+    }
+  }
+
+  void _subscribeToRooms() {
+    if (_currentUserId == null) return;
+
+    print('[CHATLIST] Creating rooms subscription');
+
+    // Отписываемся от старой
+    _roomsSubscription?.unsubscribe();
+
+    try {
+      _roomsSubscription = Supabase.instance.client
+          .channel('public:rooms_updates')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.update,
+            schema: 'public',
+            table: 'rooms',
+            callback: (payload) {
+              if (!mounted) return;
+              final rec = payload.newRecord;
+              final roomId = rec['id'] as String?;
+              if (roomId == null) return;
+              if (!_currentRoomIds.contains(roomId)) return;
+
+              print('[CHATLIST] Room updated: $roomId');
+
+              // Update local room entry (color and name, etc.)
+              setState(() {
+                rooms = rooms.map((room) {
+                  if (room.id != roomId) return room;
+                  return room.copyWith(
+                    name: rec['name'] as String? ?? room.name,
+                    memberCount: rec['member_count'] as int? ?? room.memberCount,
+                    color: rec['color'] as String? ?? room.color,
+                  );
+                }).toList();
+              });
+            },
+          )
+          .subscribe((status, err) {
+            print('[CHATLIST] Rooms subscription status: $status');
+            if (err != null) print('[CHATLIST] Error: ${err.toString()}');
+          });
+
+      print('[CHATLIST] Rooms subscription created');
+    } catch (e) {
+      print('[CHATLIST] Rooms subscription error: $e');
+      Future.delayed(const Duration(seconds: 5), () {
+        if (mounted) _subscribeToRooms();
       });
     }
   }
@@ -413,7 +466,18 @@ class _ChatListScreenState extends State<ChatListScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _realtimeSubscription?.unsubscribe();
+    _roomsSubscription?.unsubscribe();
     super.dispose();
+  }
+
+  Color? _colorFromHex(String? hex) {
+    if (hex == null || hex.isEmpty) return null;
+    try {
+      var cleaned = hex.replaceFirst('#', '');
+      if (cleaned.length == 6) return Color(int.parse('0xff$cleaned'));
+      if (cleaned.length == 8) return Color(int.parse('0x$cleaned'));
+    } catch (_) {}
+    return null;
   }
 
   @override
@@ -494,6 +558,15 @@ class _ChatListScreenState extends State<ChatListScreen>
                               vertical: 4,
                             ),
                             child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: _colorFromHex(room.color) ?? Colors.grey[300],
+                                child: Text(
+                                  room.name.isNotEmpty ? room.name[0].toUpperCase() : '?',
+                                  style: TextStyle(
+                                      color: _colorFromHex(room.color) != null ? Colors.white : Colors.black),
+                                ),
+                                radius: 18,
+                              ),
                               onTap: () {
                                 Navigator.push(
                                   context,
